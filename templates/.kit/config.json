@@ -1,0 +1,15 @@
+{
+  "timezone": "Europe/London",
+  "workdays": [1, 2, 3, 4, 5],
+  "brief_time": "07:30",
+  "work_hours": [8, 18],
+  "slack_sync_minutes": 60,
+  "health_hours": 6,
+  "update_check_hours": 24,
+  "weekly_review": true,
+  "brief_gmail_draft": true,
+  "engine": "claude",
+  "brief_model": "sonnet",
+  "kit_repo": "fredn3y/brain-starter",
+  "lookback_days_max": 14
+}

@@ -1,0 +1,92 @@
+#!/bin/bash
+# Guard in front of the real `gws` (Google Workspace CLI). ~/brain/.kit/bin comes first on
+# PATH, so every `gws` call from the brain, its schedule or its chat agents lands here first.
+# It refuses the commands that send email or export Google credentials, then hands
+# everything else to the real binary unchanged. Keep this in step with gws.py (is_blocked).
+#
+# bash 3.2 compatible (the macOS default): no associative arrays, no ${var,,}, no mapfile.
+#
+# Exit codes: 3 = blocked by the safety rules, 4 = the real gws is missing or misconfigured.
+
+blocked() {
+  echo "Blocked by your brain's safety rules: sending email from the brain is turned off. Make a draft instead: brain draft email --to … --subject … --body-file …" >&2
+  exit 3
+}
+
+# Physical path of $1 with symlinks followed (old macOS has no `readlink -f`).
+resolve() {
+  target=$1
+  hops=0
+  while [ -L "$target" ] && [ "$hops" -lt 40 ]; do
+    link=$(readlink "$target") || break
+    case "$link" in
+      /*) target=$link ;;
+      *) target=$(dirname "$target")/$link ;;
+    esac
+    hops=$((hops + 1))
+  done
+  dir=$(cd -P "$(dirname "$target")" 2>/dev/null && pwd -P) || return 1
+  echo "$dir/$(basename "$target")"
+}
+
+# Options that take a value (keep in step with VALUE_FLAGS in gws.py).
+takes_value() {
+  case "$1" in
+    --params|--json|--format|--output|-o|--sanitize|--upload|--upload-content-type) return 0 ;;
+    --page-limit|--page-delay|--api-version|--query|--max|--id|--message-id) return 0 ;;
+    --to|--cc|--bcc|--subject|--body|--calendar|--timezone|--days|--scopes|-s|--services) return 0 ;;
+  esac
+  return 1
+}
+
+# 1) a send/reply/forward helper anywhere after `gmail` (even as an option value: conservative);
+# 2) the word `send` (or `....send`) as a command word after `gmail`, wherever options sit;
+# 3) `auth ... export`.
+seen_gmail_any=0
+seen_gmail_word=0
+seen_auth_word=0
+skip=0
+for arg in "$@"; do
+  if [ "$seen_gmail_any" = 1 ]; then
+    case "$arg" in
+      +send|+reply|+reply-all|+forward) blocked ;;
+    esac
+  fi
+  [ "$arg" = "gmail" ] && seen_gmail_any=1
+  if [ "$skip" = 1 ]; then
+    skip=0
+    continue
+  fi
+  case "$arg" in
+    -*=*) continue ;;
+    -*)
+      if takes_value "$arg"; then
+        skip=1
+      fi
+      continue
+      ;;
+  esac
+  if [ "$seen_gmail_word" = 1 ]; then
+    case "$arg" in
+      send|*.send) blocked ;;
+    esac
+  fi
+  if [ "$seen_auth_word" = 1 ] && [ "$arg" = "export" ]; then
+    blocked
+  fi
+  [ "$arg" = "gmail" ] && seen_gmail_word=1
+  [ "$arg" = "auth" ] && seen_auth_word=1
+done
+
+real=${BRAIN_GWS_REAL:-$HOME/.local/bin/gws}
+if [ ! -f "$real" ] || [ ! -x "$real" ]; then
+  echo "gws isn't installed — run \`brain tools install gws\`" >&2
+  exit 4
+fi
+self=$(resolve "$0")
+real_path=$(resolve "$real")
+if [ -n "$self" ] && [ "$self" = "$real_path" ]; then
+  echo "gws is set up wrongly: $real points back to the brain's guard instead of the real gws. Run \`brain tools install gws\`." >&2
+  exit 4
+fi
+exec "$real" "$@"

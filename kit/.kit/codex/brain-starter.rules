@@ -1,0 +1,27 @@
+# brain-starter: commands Codex must never run for this brain.
+#
+# Kit-owned. `brain install` and `brain update` copy this file to ~/.codex/rules/, which Codex
+# loads for every project. Edits here are replaced on update. Restart Codex after a change.
+# Check a command against it:
+#   codex execpolicy check --pretty --rules ~/.codex/rules/brain-starter.rules -- gws gmail +send
+#
+# Rules match words in exact positions, so `/full/path/gws …` slips past, and gws options must
+# come after the command words. The gws guard in ~/brain/.kit/bin and the read-only Google and Slack access sit behind
+# these rules.
+
+prefix_rule(pattern = ["gws", "gmail", ["+send", "+reply", "+reply-all", "+forward"]], decision = "forbidden", justification = "The brain only drafts; you send.")
+prefix_rule(pattern = ["gws", "gmail", "users", "messages", "send"], decision = "forbidden", justification = "The brain only drafts; you send.")
+prefix_rule(pattern = ["gws", "gmail", "users", "drafts", "send"], decision = "forbidden", justification = "The brain only drafts; you send.")
+prefix_rule(pattern = ["gws", "auth", "export"], decision = "forbidden", justification = "Your Google login stays private.")
+prefix_rule(pattern = ["security", ["find-generic-password", "find-internet-password", "dump-keychain"]], decision = "forbidden", justification = "Saved passwords stay in your Keychain.")
+
+# Options placed between the command words would hide a send from the rules above, so gws
+# commands must put their options after the command words.
+prefix_rule(pattern = ["gws", ["--format", "--params", "--json", "--dry-run", "--page-all", "--page-limit", "--page-delay", "--output", "-o", "--sanitize", "--upload", "--upload-content-type", "--api-version"]], decision = "forbidden", justification = "Put gws options after the command words.")
+prefix_rule(pattern = ["gws", "gmail", ["--format", "--params", "--json", "--dry-run", "--page-all", "--page-limit", "--page-delay", "--output", "-o", "--sanitize", "--upload", "--upload-content-type", "--api-version"]], decision = "forbidden", justification = "Put gws options after the command words.")
+prefix_rule(pattern = ["gws", "gmail", "users", ["--format", "--params", "--json", "--dry-run", "--page-all", "--page-limit", "--page-delay", "--output", "-o", "--sanitize", "--upload", "--upload-content-type", "--api-version"]], decision = "forbidden", justification = "Put gws options after the command words.")
+prefix_rule(pattern = ["gws", "gmail", "users", ["messages", "drafts"], ["--format", "--params", "--json", "--dry-run", "--page-all", "--page-limit", "--page-delay", "--output", "-o", "--sanitize", "--upload", "--upload-content-type", "--api-version"]], decision = "forbidden", justification = "Put gws options after the command words.")
+prefix_rule(pattern = ["gws", "gmail", "users", ["messages.send", "drafts.send"]], decision = "forbidden", justification = "The brain only drafts; you send.")
+prefix_rule(pattern = ["security", "-i"], decision = "forbidden", justification = "Saved passwords stay in your Keychain.")
+prefix_rule(pattern = ["security", ["-q", "-v"], ["find-generic-password", "find-internet-password", "dump-keychain", "export"]], decision = "forbidden", justification = "Saved passwords stay in your Keychain.")
+prefix_rule(pattern = ["brain", "_apply"], decision = "forbidden", justification = "Internal command; use `brain update`.")

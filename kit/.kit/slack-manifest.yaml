@@ -1,0 +1,20 @@
+display_information:
+  name: Brain (read-only)
+  description: Lets my brain read my Slack conversations so it can brief me. It cannot post.
+oauth_config:
+  scopes:
+    user:
+      - channels:history
+      - channels:read
+      - groups:history
+      - groups:read
+      - im:history
+      - im:read
+      - mpim:history
+      - mpim:read
+      - users:read
+      - search:read
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
