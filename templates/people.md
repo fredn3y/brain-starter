@@ -6,7 +6,7 @@
 
 ## {{full name}}
 
-- Role: {{job title and company}}
-- Contact: {{email}} · Slack: {{Slack display name}}
-- Relationship: {{for example: my manager, my direct report, key customer, supplier}}
+- Role: {{job title and where they work}}
+- Contact: {{email, or how you usually reach them}}
+- Relationship: {{for example: my manager, my client, a colleague, a supplier}}
 - How to work with them: {{tone, what they care about, anything worth remembering}}

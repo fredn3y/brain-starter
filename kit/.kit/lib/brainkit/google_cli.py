@@ -4,6 +4,9 @@
   brain google connect [--client-file PATH] install the OAuth client file, sign in in the browser
   brain draft email --to … --subject … (--body-file F | --body TEXT) [--cc …] [--reply-to ID]
 
+`brain google connect` first fetches the Google tool (gws) when it isn't installed yet: on a
+memory-only brain, Google is an add-on and gws arrives with it.
+
 `gws auth login` only prints the Google sign-in link, so `connect` streams its output, opens
 the link with macOS `open` and waits for gws to finish. The link is shown in the terminal but
 never logged (it carries a one-time state value). Client secrets are never printed.
@@ -188,8 +191,8 @@ def run_login(runner: Runner, env: Optional[Mapping[str, str]], spawn: Spawn = s
         if match:
             if not opened:
                 opened.append(match.group(0))
-                out("Opening the Google sign-in page in your browser. Sign in with your work account "
-                    "and allow access.")
+                out("Opening the Google sign-in page in your browser. Sign in with the Google "
+                    "account you want the brain to use and allow access.")
                 out("If no browser window opens, copy this link into your browser:")
                 out(match.group(0))
                 open_url(runner, match.group(0), platform=platform, home=(env or {}).get("HOME"))
@@ -216,9 +219,35 @@ def show_status(runner: Runner, env: Optional[Mapping[str, str]], out: Callable[
     return 0 if valid and not missing else 1
 
 
+def ensure_gws(ws: Workspace, runner: Runner, home: Path, log,
+               out: Callable[[str], None] = print) -> bool:
+    """Install gws from tools.json when it's missing. True when gws is there afterwards."""
+    from . import tools
+
+    try:
+        [entry] = tools.select(tools.load_tools(tools.tools_file(ws)), ["gws"])
+    except tools.ToolError as exc:
+        out(f"Couldn't find the Google tool in the tools list ({exc}).")
+        return False
+    if tools.tool_status(entry, runner, home).installed:
+        return True
+    out("Getting the Google tool (gws) first. This can take a minute ...")
+    outcome = tools.install_tool(entry, runner, home, log)
+    if outcome.ok:
+        out("The Google tool is installed.")
+        return True
+    out(f"The Google tool didn't install ({outcome.message}).")
+    out("Check the internet connection, then run `brain google connect` again.")
+    return False
+
+
 def connect(ws: Workspace, runner: Runner, env: Optional[Mapping[str, str]], home: Path,
             client_file: Optional[str] = None, spawn: Spawn = spawn_lines, platform: Optional[str] = None,
-            out: Callable[[str], None] = print, now: Optional[datetime] = None) -> int:
+            out: Callable[[str], None] = print, now: Optional[datetime] = None,
+            ensure_tool: Optional[Callable[[], bool]] = None) -> int:
+    """`ensure_tool` (the CLI passes ensure_gws) runs first and stops here when it fails."""
+    if ensure_tool is not None and not ensure_tool():
+        return 1
     inbox = ws.root / "inbox"
     if client_file:
         source = Path(client_file).expanduser()
@@ -283,7 +312,7 @@ def register(subparsers) -> None:
     google = subparsers.add_parser("google", help="connect Google (Gmail, Calendar, Drive) and check it")
     actions = google.add_subparsers(dest="google_action", metavar="<action>")
     actions.add_parser("status", help="who is signed in and what's missing").set_defaults(func=cmd_status)
-    p_connect = actions.add_parser("connect", help="install the sign-in file, then sign in with your browser")
+    p_connect = actions.add_parser("connect", help="get the Google tool if needed, then sign in with your browser")
     p_connect.add_argument("--client-file", metavar="PATH",
                            help="the client_secret….json file (default: newest in Downloads or ~/brain/inbox)")
     p_connect.set_defaults(func=cmd_connect)
@@ -312,9 +341,22 @@ def cmd_status(args: argparse.Namespace) -> int:
     return show_status(_runner(), _env(_workspace(args)))
 
 
+def _logger(ws: Workspace):
+    try:
+        from .log import get_logger
+
+        return get_logger(ws)
+    except Exception:
+        import logging
+
+        return logging.getLogger("brain")
+
+
 def cmd_connect(args: argparse.Namespace) -> int:
     ws = _workspace(args)
-    code = connect(ws, _runner(), _env(ws), Path.home(), client_file=args.client_file)
+    runner, home = _runner(), Path.home()
+    code = connect(ws, runner, _env(ws), home, client_file=args.client_file,
+                   ensure_tool=lambda: ensure_gws(ws, runner, home, _logger(ws)))
     _log(ws, f"google connect: {'ok' if code == 0 else 'not finished'}")
     return code
 

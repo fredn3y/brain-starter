@@ -11,9 +11,10 @@ Write it the way the user would, so they can send it with little or no editing.
 
 1. **Who is it for?** Look them up in `people.md`: role, relationship, tone.
 2. **What's the point?** One or two clear asks or messages. If there are more, suggest splitting.
-3. **Check the facts.** Read the thread you're replying to (`mail` or `slack` skill), the related
-   task, and the user's calendar for any date or time (`calendar-drive` skill). Never invent facts,
-   numbers, dates or promises; if something is unknown, ask the user or leave a clear `[gap]`.
+3. **Check the facts.** Read the thread you're replying to (`mail` or `slack` skill if connected;
+   otherwise ask the user to paste it), the related task, and the user's calendar for any date or
+   time (`calendar-drive` skill, or ask them). Never invent facts, numbers, dates or promises; if
+   something is unknown, ask the user or leave a clear `[gap]`.
 
 ## Write
 
@@ -35,7 +36,8 @@ Friday right?"). If they ask for changes, show the whole new version again.
 
 ## After the user's OK
 
-- Email: save it with the `mail` skill (`brain draft email`). It lands in their Gmail Drafts.
+- Email: if Google is connected, save it with the `mail` skill (`brain draft email`); it lands in
+  their Gmail Drafts. If not, they copy it from the chat.
 - Slack: they copy the text and send it.
 - If it makes a promise or changes the state of a task, add a Log line there (`task-files` skill).
 

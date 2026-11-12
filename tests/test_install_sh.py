@@ -223,3 +223,34 @@ def test_checksum_mismatch_installs_nothing(dist, mac, tmp_path):
     assert result.returncode == 1 and "checksum" in result.stderr
     assert not (mac["home"] / "brain").exists()
     assert list(mac["tmp"].iterdir()) == []
+
+
+def test_claude_failing_is_honest_and_extra_tools_reach_brain_install(dist, mac):
+    """No network: Claude Code can't install, so the installer must not say the brain is ready.
+    BRAIN_EXTRA_TOOLS asks for the add-ons in the same run."""
+    release = local_release(dist)
+    del release["BRAIN_SKIP_TOOLS"]
+    # Only the fake Mac commands and the system basics: this machine's own claude/gws/codex hidden.
+    result = run_installer(mac, PATH=f"{mac['bin']}:/usr/bin:/bin", BRAIN_EXTRA_TOOLS="gws,codex",
+                           **release)
+    out = result.stdout + result.stderr
+    assert result.returncode == 1, out
+    assert "claude: FAILED" in result.stdout
+    assert "t3: FAILED" in result.stdout  # the standard set: Claude Code and T3 Code
+    assert "gws: FAILED" in result.stdout and "codex: FAILED" in result.stdout  # the add-ons
+    assert "Claude Code didn't install, so your brain can't be used yet." in result.stdout
+    assert "paste the same install line again" in result.stderr
+    assert "is ready" not in out
+    assert (mac["home"] / "brain" / ".kit" / "manifest.json").is_file()  # the folder is in place
+    log = fake_log(mac)
+    assert "https://claude.ai/install.sh" in log
+    assert "https://github.com/pingdotgg/t3code/releases/latest/download/latest-mac.yml" in log
+
+
+def test_default_install_fetches_only_claude_and_t3(dist, mac):
+    release = local_release(dist)
+    del release["BRAIN_SKIP_TOOLS"]
+    result = run_installer(mac, PATH=f"{mac['bin']}:/usr/bin:/bin", **release)
+    assert result.returncode == 1
+    assert "gws" not in result.stdout and "codex" not in result.stdout.lower()
+    assert "googleworkspace" not in fake_log(mac) and "chatgpt.com" not in fake_log(mac)

@@ -25,3 +25,14 @@ prefix_rule(pattern = ["gws", "gmail", "users", ["messages.send", "drafts.send"]
 prefix_rule(pattern = ["security", "-i"], decision = "forbidden", justification = "Saved passwords stay in your Keychain.")
 prefix_rule(pattern = ["security", ["-q", "-v"], ["find-generic-password", "find-internet-password", "dump-keychain", "export"]], decision = "forbidden", justification = "Saved passwords stay in your Keychain.")
 prefix_rule(pattern = ["brain", "_apply"], decision = "forbidden", justification = "Internal command; use `brain update`.")
+
+# Destructive commands. Recursive deletes, as the first or second option (`rm -f -r …`).
+# Options in any other place, or `find … -delete`, still slip past; the AGENTS.md rule covers them.
+prefix_rule(pattern = [["rm", "/bin/rm"], ["-r", "-R", "-rf", "-fr", "-Rf", "-fR", "-rv", "-Rv", "-rfv", "-frv", "-Rfv", "-vrf", "-vfr", "--recursive"]], decision = "forbidden", justification = "Use `brain trash <path>` instead; never rm -rf.")
+prefix_rule(pattern = [["rm", "/bin/rm"], ["-f", "-v", "-i", "-fv", "-vf", "--force", "--verbose"], ["-r", "-R", "-rf", "-fr", "-Rf", "-fR", "-rv", "-Rv", "--recursive"]], decision = "forbidden", justification = "Use `brain trash <path>` instead; never rm -rf.")
+prefix_rule(pattern = [["sudo", "/usr/bin/sudo"]], decision = "forbidden", justification = "Never run commands as the Mac's administrator; ask the user.")
+prefix_rule(pattern = [["pkill", "killall", "/usr/bin/pkill", "/usr/bin/killall"]], decision = "forbidden", justification = "Never stop other programs; ask the user to quit them.")
+prefix_rule(pattern = ["git", "clean"], decision = "forbidden", justification = "git clean deletes files for good; use `brain trash <path>` instead.")
+prefix_rule(pattern = ["git", "reset", "--hard"], decision = "forbidden", justification = "git reset --hard throws away changes for good.")
+prefix_rule(pattern = ["git", "push", ["--force", "-f", "--force-with-lease"]], decision = "forbidden", justification = "Never force-push; it can wipe out work saved online.")
+prefix_rule(pattern = ["git", "push", ["origin", "-u", "--set-upstream"], ["--force", "-f", "--force-with-lease"]], decision = "forbidden", justification = "Never force-push; it can wipe out work saved online.")

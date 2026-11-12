@@ -10,10 +10,17 @@ rules, skills and a small Python CLI (`brain`). The person's answers, tasks and 
 and never shipped or overwritten. Claude Code and Codex share the same files. The chat UI is
 T3 Code; the CLI and launchd job work without it.
 
+A fresh install is memory only: T3 Code, Claude Code under it (T3 needs it and doesn't bundle
+it) and the brain folder. Google (`gws`), Codex, Slack and the daily schedule with its morning
+brief are add-ons the person turns on later by asking in a chat (`brain google connect`,
+`brain tools install codex`, `brain secret set slack --gui`, `brain schedule install`). A
+consultant doing the full setup can ask for the extra tools up front (`BRAIN_EXTRA_TOOLS`, below).
+
 ## Repo layout
 
 ```text
 install.sh                  one-line installer (bash 3.2: macOS default shell tools only)
+                            env: BRAIN_EXTRA_TOOLS="gws,codex" -> `brain install --with gws,codex`
 kit/                        files that land in ~/brain as KIT-OWNED (replaced on update)
   AGENTS.md  CLAUDE.md
   .claude/settings.json
@@ -22,11 +29,12 @@ kit/                        files that land in ~/brain as KIT-OWNED (replaced on
   docs/                     short user guides + setup-prompts.md (Claude in Chrome prompts)
   tasks/TEMPLATE.md
   .kit/VERSION
-  .kit/tools.json           pinned external tools (version, per-arch URL, sha256)
+  .kit/tools.json           external tools: which are required / standard, how to install (see Tools)
   .kit/slack-manifest.yaml
   .kit/bin/brain            entry point (python3, adds .kit/lib to sys.path)
   .kit/bin/gws              guard shim in front of the real gws (refuses send/write methods)
-  .kit/bin/brain-guard      Claude Code PreToolUse hook entry (blocks sends, secret reads, kit edits)
+  .kit/bin/brain-guard      Claude Code PreToolUse hook entry (blocks sends, secret reads, kit edits,
+                            destructive commands)
   .kit/codex/brain-starter.rules  Codex forbidden rules, copied to ~/.codex/rules/ on install/update
   .kit/lib/brainkit/        the Python package (stdlib only, Python 3.9+)
 templates/                  files created in ~/brain ONLY IF MISSING (user-owned afterwards)
@@ -50,6 +58,7 @@ docs/                       for the consultant: architecture, runbook, security,
 | `.kit/` (except `config.json`, `snapshots/`, `state/`) | kit | code, manifest, VERSION, tools.json |
 | `.kit/config.json` | user | created from template; never overwritten |
 | `.kit/manifest.json` | kit | manifest of the installed release (hashes of kit-owned files) |
+| `.kit/state/session-start.json` | generated | the session-start hook's last check try and last "update available" line |
 | `.kit/snapshots/` | generated | pre-update tarballs, keep last 3 |
 | `.kit/run.lock` | generated | catch-up / update lock |
 | `me.md`, `strategy.md`, `people.md`, `voice.md` | user | filled by `/onboard` |
@@ -95,10 +104,10 @@ Module ownership:
 | `notify.py` | macOS notification via osascript (no-op elsewhere); `brain notify-test` |
 | `launchagent.py` | `brain schedule install|uninstall|status`: plist + launchctl; `job_env()` = the one PATH/HOME/USER env for jobs, doctor and reports |
 | `secrets.py` | `brain secret set|check|delete <name>`: Keychain via `security` |
-| `doctor.py` | `brain doctor [--json]`: checks with ok/warn/fail + fix hint |
+| `doctor.py` | `brain doctor [--json] [--quick]`: checks with ok/warn/fail/info + fix hint (see Doctor) |
 | `report.py` | `brain report`: redacted diagnostics zip in `reports/` |
 | `gws.py` | run gws (JSON), refuse send methods, auth status, draft helper |
-| `google_cli.py` | `brain google connect|status`, `brain draft email` |
+| `google_cli.py` | `brain google connect|status`, `brain draft email`; `connect` first installs gws when it's missing |
 | `browser.py` | open a link in Chrome when installed (Claude in Chrome lives there), else the default browser |
 | `slack_api.py` | Slack Web API client (read-only), injectable transport |
 | `slack_sync.py` | cursor-based sync to `ledgers/slack/` (72 h re-read for new thread replies) |
@@ -112,10 +121,88 @@ Module ownership:
 | `apply.py` | `brain _apply`: install/update a release dir into a workspace |
 | `update.py` | `brain update|rollback`, update check against GitHub releases |
 | `snapshot.py` | pre-update snapshots and restores (exact modes and links) |
-| `tools.py` | `brain tools install|status`: pinned external tools from `tools.json` |
-| `install.py` | `brain install`: fresh install from a release dir (used by install.sh); `chmod 700` the workspace |
+| `tools.py` | `brain tools install [NAME…] [--force]|status`: external tools from `tools.json`; no names = the standard set |
+| `mac_apps.py` | find an installed `.app` by name pattern; read an app's `latest-mac.yml` update feed (no YAML library) |
+| `install.py` | `brain install [--with TOOLS]`: fresh install from a release dir (used by install.sh); `chmod 700` the workspace |
+| `session_start.py` | `brain _session-start` (hidden): Claude Code SessionStart hook, says when a kit update is waiting |
 | `repair.py` | `brain repair`: re-link skills for Codex, re-copy Codex rules, fix the `brain` link and PATH block |
 | `guard.py` | Claude Code PreToolUse hook (`.kit/bin/brain-guard`): blocks sends, secret reads, kit-file edits |
+| `destructive.py` | the hook's rules for destructive commands: recursive `rm`, `sudo`, `pkill`, `killall`, `git clean`, `git reset --hard`, force-pushes |
+| `trash.py` | `brain trash <path>...`: move items to `~/.Trash`, never delete (see Trash) |
+
+## Trash (`brain trash`)
+
+The safe way to remove something, since the guards block deleting folders for good. Each path
+(relative to the current folder) is moved into `~/.Trash` with `os.rename`; nothing is deleted.
+A name already in the Trash becomes `name 2.ext`, `name 3.ext`, … (time-stamped if the Trash
+can't be read). Refused, with one `Not moved: …` line each: a missing path, anything outside the
+home folder, the home folder, the Trash or anything in it, the brain folder or a folder holding
+it, `.kit/`, and kit-owned files (the manifest's `kit_files`, plus `AGENTS.md`, `CLAUDE.md` and
+`.claude/settings.json`) or folders holding them. A final link is moved, not its target. Each
+move prints `Moved <path> to the Trash.` (with the new name when it changed). Exit 0 when all
+moved, 1 if any was refused, 2 off a Mac (nothing moved). Finder's "Put Back" doesn't know
+these items. It changes files, so it stays off the allow list.
+
+## Tools (`.kit/tools.json`)
+
+`{"tools": [ … ]}`, one object per tool, in install order:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `name` | string | `claude`, `t3`, `gws`, `codex` (what `brain tools install NAME` takes) |
+| `required` | bool | setup isn't finished without it (only `claude`) |
+| `default` | bool, absent = true | in the standard set: a fresh `brain install` and `brain tools install` with no names get it (`claude`, `t3`); `false` = add-on, installed only by name (`gws`, `codex`) |
+| `check` | list of strings | the command that proves it runs (`[]` for apps) |
+| `install.type` | string | `script`, `archive-binary`, `mac-app-zip`, `mac-app-feed`, `manual` |
+
+Per type: `script` takes `url` (https), `shell` (`bash`|`sh`), optional `args`. `archive-binary`
+takes `version`, `assets.<arm64|x86_64>.url` + `sha256` and/or `sha512` (hex), `binary`, `dest`.
+`mac-app-zip` takes pinned `assets` like archive-binary plus `app` (exact .app name).
+`mac-app-feed` (T3 Code) pins nothing: `feed` (https URL of the app's electron-builder
+`latest-mac.yml`), `zip_suffix.<arm64|x86_64>` (`-arm64.zip` / `-x64.zip`) and `app_glob`
+(`T3 Code*.app`). The installer reads the feed's `version` and `files` (`url`, base64 `sha512`),
+downloads the matching zip from beside the feed (or an https URL it names), refuses a plain name
+with `/` or `..`, a non-https address or a sha512 that isn't 64 bytes, verifies the sha512, then
+`ditto -x -k` and swaps the app into /Applications (or ~/Applications). Any installed app
+matching `app_glob` counts as present and is never replaced (T3 updates itself; `--force`
+reinstalls beside it). `brain doctor`'s `t3 app` check uses the same pattern
+(`mac_apps.T3_APP_GLOB`). T3's `SHA256SUMS` covers only its CLI tarballs, so the feed is the
+integrity source for the desktop zips. A `TODO` url or hash is refused, never guessed.
+
+`brain install` installs the standard set plus `--with` names (repeatable, comma or space
+separated; unknown names are skipped with a note). When a required tool still isn't there it
+says so plainly and exits 3 (the brain folder stays in place; re-running is safe); install.sh
+turns exit 3 into a "paste the same line again" message. Other tool problems are reported and
+the install still finishes (exit 0).
+
+## Doctor
+
+Statuses: `ok`, `warn` (worth fixing), `fail` (broken; exit code 1), `info` (nothing to fix).
+An add-on that was never set up is `info` with a hint in plain words, so a healthy memory-only
+Mac exits 0: `google` without gws or without a saved Google login ("Google isn't connected
+(optional)", fix `to add it, say "connect Google" in a chat`), `slack` with no saved token
+(`to add it, say "connect Slack" in a chat`), `schedule` not loaded (`to get a morning brief, say
+"turn on my morning brief" in a chat`), `codex` not installed. With no schedule there is no
+`last catch-up` check. A Google login that was saved and has since expired, been revoked or lost
+permissions stays `fail`; an unreadable `gws auth status` is `warn`.
+
+## Claude Code hooks (`kit/.claude/settings.json`)
+
+- `PreToolUse` (Bash|Read|Edit|Write|MultiEdit|NotebookEdit): `${CLAUDE_PROJECT_DIR}/.kit/bin/brain-guard`.
+- `SessionStart`, matcher `startup`, command `${CLAUDE_PROJECT_DIR}/.kit/bin/brain`, args
+  `["_session-start"]`, `timeout` 10 s. At most once per `update_check_hours` (counting the
+  scheduled job's checks and the hook's own tries) it runs the same release check
+  as the `update_check` job with a 4 s network timeout, and records an ok answer as an
+  `update_check` row (`data.source = "session-start"`); failures go only to
+  `.kit/state/session-start.json`, never the runs ledger, and a failed try is repeated after
+  an hour. In scheduled (headless) runs, which `engine.py` marks with `BRAIN_ENGINE_RUN=1`, the
+  hook does nothing, so a run nobody reads can't use up the chat's notice. When the newest `update_check` row says
+  a newer version than the installed one is out, it prints one line, at most once per
+  `update_check_hours` per version:
+  `A brain kit update is available (v0.2.0 -> v0.2.1: <first line of the notes>). Tell the user in one line and offer to run it; if they say yes, run "brain update --yes".`
+  Otherwise, and on any error, it prints nothing; it always exits 0. Claude Code adds a
+  SessionStart hook's stdout to the chat's context and waits for it before the first answer,
+  hence the short timeouts. `brain update --yes` stays off the allow list.
 
 ## Config (`.kit/config.json`, user-owned) defaults
 
@@ -146,7 +233,7 @@ Order: `health` → `slack_sync` → `update_check` → `brief` → `weekly_revi
 - `health`: interval `health_hours`, and always before a brief.
 - `slack_sync`: interval `slack_sync_minutes` inside `work_hours` on workdays, and always before a
   brief. Skipped (status `skipped`) when no Slack token is stored.
-- `update_check`: interval `update_check_hours`.
+- `update_check`: interval `update_check_hours` (the session-start hook's ok checks count too).
 - `brief`: slot `brief_time` on `workdays`. Due when the most recent slot ≤ now is later than the
   last ok brief. Several missed slots → ONE brief covering since the last ok brief
   (capped at `lookback_days_max`).
@@ -181,6 +268,8 @@ never sees the value. Google credentials are gws's own (encrypted, key in Keycha
 
 ## Updates (see `apply.py` / `update.py`)
 
+0. The scheduled `update_check` job, or the session-start hook in a new chat, notices a release;
+   the person says yes and `brain update --yes` runs.
 1. The old code checks GitHub, downloads the release tarball, verifies `SHA256SUMS`.
 2. It snapshots the workspace (minus `.kit/snapshots`) to `.kit/snapshots/<ts>-<from>-to-<to>.tgz`.
 3. It runs the NEW release's `brain _apply --release-dir <dir> --workspace <ws>`.

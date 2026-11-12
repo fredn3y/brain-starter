@@ -5,6 +5,10 @@ description: Use when the user asks about their email - what's new, what needs a
 
 # Mail
 
+Needs Google. If you don't know it's connected, run `brain google status`. Not connected: tell
+the user in one line and offer to connect it (`onboard` skill, `google` part). Meanwhile, work
+from mail they paste into the chat, and show drafts in chat for them to copy.
+
 You can read Gmail and save drafts. You can't send, archive, label or delete, and you never try.
 
 ## Search

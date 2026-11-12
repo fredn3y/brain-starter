@@ -379,3 +379,70 @@ def test_draft_email_needs_a_subject_or_a_reply_to(ws, capsys):
                                       "--body", "x"])
     assert args.func(args) == 2
     assert "--subject" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------- connect fetches gws when missing
+
+
+def gws_tools(ws, url: str, sha256: str) -> None:
+    asset = {"url": url, "sha256": sha256}
+    ws.tools_file.write_text(json.dumps({"tools": [
+        {"name": "gws", "required": False, "default": False, "check": ["gws", "--version"],
+         "install": {"type": "archive-binary", "version": "0.22.5", "binary": "gws",
+                     "dest": "~/.local/bin/gws", "assets": {"arm64": asset, "x86_64": asset}}}]}))
+
+
+def test_ensure_gws_installs_it_when_missing(ws, home, tmp_path):
+    import hashlib
+    import logging
+
+    from release_helpers import FakeNet
+
+    binary = tmp_path / "fixtures" / "gws"
+    binary.parent.mkdir()
+    binary.write_bytes(b"#!/bin/sh\necho gws 0.22.5\n")
+    url = "https://example.invalid/v0.22.5/gws"
+    gws_tools(ws, url, hashlib.sha256(binary.read_bytes()).hexdigest())
+    dest = home / ".local" / "bin" / "gws"
+    fake = FakeRunner().on("uname", "-m", result=Result(0, "arm64\n")).on(
+        str(dest), "--version", result=Result(0, "gws 0.22.5\n"))
+    net = FakeNet(fake)
+    net.files[url] = binary
+    out = []
+    assert google_cli.ensure_gws(ws, fake, home, logging.getLogger("t"), out=out.append) is True
+    assert dest.read_bytes() == binary.read_bytes()
+    assert out == ["Getting the Google tool (gws) first. This can take a minute ...",
+                   "The Google tool is installed."]
+    out.clear()
+    assert google_cli.ensure_gws(ws, fake, home, logging.getLogger("t"), out=out.append) is True
+    assert out == [] and net.downloads() == [url]  # already there: nothing fetched again
+
+
+def test_ensure_gws_failure_stops_connect_before_anything_changes(ws, home):
+    import logging
+
+    gws_tools(ws, "https://example.invalid/v0.22.5/gws", "0" * 64)
+    write(home / "Downloads" / "client_secret_1.json", client_json(), 1000)
+    fake = FakeRunner().on("uname", "-m", result=Result(0, "arm64\n"))  # curl fails: offline
+    out = []
+    code = google_cli.connect(ws, fake, None, home, spawn=spawner([]), out=out.append,
+                              ensure_tool=lambda: google_cli.ensure_gws(ws, fake, home,
+                                                                        logging.getLogger("t"),
+                                                                        out=out.append))
+    assert code == 1
+    assert "The Google tool didn't install" in out[1] and "run `brain google connect` again" in out[2]
+    assert (home / "Downloads" / "client_secret_1.json").exists()
+    assert not (home / ".config" / "gws").exists()
+
+
+def test_cli_connect_fetches_gws_first(ws, monkeypatch):
+    seen = []
+
+    def fake_ensure(ws_arg, runner, home, log, out=print):
+        seen.append(ws_arg.root)
+        return False
+
+    monkeypatch.setattr(google_cli, "ensure_gws", fake_ensure)
+    monkeypatch.setattr(google_cli, "_runner", lambda: FakeRunner())
+    args = build_parser().parse_args(["--workspace", str(ws.root), "google", "connect"])
+    assert args.func(args) == 1 and seen == [ws.root]

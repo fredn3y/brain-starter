@@ -74,13 +74,16 @@ Since Thu 17:40
 ### Rules
 
 - Never invent facts, names, dates or links. Use each item's link from the packet. If a mail item
-  has only a message id, link `https://mail.google.com/mail/?authuser=<the user's work email>#all/<id>`;
+  has only a message id, link `https://mail.google.com/mail/?authuser=<the user's Google email>#all/<id>`;
   otherwise leave the link out.
 - Times in the user's timezone. Follow "How I like to be told things" in `me.md`.
 - Never copy passwords, login codes or bank details into the brief.
 - Short lines, plain words. Cut FYI before cutting Needs you.
 
 ## In a chat
+
+The brief is an add-on and needs Google. If `brain google status` says Google isn't connected,
+say so in one line and offer to set it up (`onboard` skill, `google` part, then `brief`).
 
 If today's file is in `briefs/` (`YYYY-MM-DD.md`), show it. If not, run `brain brief --detach`: it
 returns at once and writes the brief in the background. After a minute or two, show the newest

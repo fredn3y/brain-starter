@@ -87,5 +87,6 @@ def test_real_checks_with_nothing_installed(ctx, tmp_path, monkeypatch):
     result = health.run(ctx)  # FakeRunner answers 127 for every command
     assert result.status == "ok"
     names = {problem["name"] for problem in result.data["problems"]}
-    assert {"claude", "google"} <= names
+    assert "claude" in names  # required: a problem
+    assert "google" not in names  # an add-on that was never set up: not a problem
     assert all(set(p) == {"name", "status", "message", "fix"} for p in result.data["problems"])

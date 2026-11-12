@@ -28,6 +28,8 @@ COMMAND_MODULES = [
     "install",
     "tools",
     "repair",
+    "session_start",
+    "trash",
 ]
 
 

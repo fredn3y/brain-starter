@@ -387,6 +387,9 @@ def cli(ws, world, monkeypatch, capsys):
     monkeypatch.setattr(slack_cli, "_runner", lambda: world.runner)
     monkeypatch.setattr(slack_cli, "_token", lambda runner: TOKEN)
     monkeypatch.setattr(slack_cli, "sync", functools.partial(slack_sync.sync, pause=0))
+    # The fake workspace's messages are dated around world.now; `brain slack sync` asks the
+    # clock, so pin it there (otherwise the test breaks once real time is 72 h past the fixture).
+    monkeypatch.setattr(slack_cli.clock, "now", lambda tz_name="Europe/London": world.now)
 
     def run(*argv):
         args = build_parser().parse_args(["--workspace", str(ws.root), "slack"] + list(argv))

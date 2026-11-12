@@ -86,11 +86,12 @@ def installed_version(ws: Workspace) -> str:
     return completed if isinstance(completed, str) and completed else version
 
 
-def check_latest(runner: Runner, repo: str) -> Optional[Release]:
+def check_latest(runner: Runner, repo: str, timeout: int = 30) -> Optional[Release]:
     """The latest published release, or None when the repo has none yet."""
     if not _REPO_RE.match(repo or ""):
         raise ReleaseError(f"bad kit_repo: {repo!r}")
-    resp = http.request(runner, "GET", API_LATEST.format(repo=repo), headers=API_HEADERS)
+    resp = http.request(runner, "GET", API_LATEST.format(repo=repo), headers=API_HEADERS,
+                        timeout=timeout)
     if resp.status == 404:
         return None
     if resp.status != 200:

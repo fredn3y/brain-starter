@@ -14,10 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from brainkit import tools
+from brainkit import mac_apps, tools
 from brainkit.cli import main as cli_main
 from brainkit.runner import FakeRunner, Result
-from brainkit.tools import ToolError, detect_arch, install_many, install_tool, load_tools, tool_status
+from brainkit.tools import (ToolError, default_names, detect_arch, install_many, install_tool, load_tools,
+                            tool_status)
 from release_helpers import FakeNet, write
 
 LOG = logging.getLogger("test-tools")
@@ -69,26 +70,34 @@ def arm(fake: FakeRunner) -> FakeRunner:
 
 
 def test_repo_tools_json(repo):
-    entries = {t["name"]: t for t in load_tools(repo / "kit" / ".kit" / "tools.json")}
-    assert list(entries) == ["claude", "gws", "codex", "t3"]
-    claude, gws, codex, t3 = (entries[n] for n in ("claude", "gws", "codex", "t3"))
-    assert claude["required"] and claude["check"] == ["claude", "--version"]
+    tools_list = load_tools(repo / "kit" / ".kit" / "tools.json")
+    entries = {t["name"]: t for t in tools_list}
+    assert list(entries) == ["claude", "t3", "gws", "codex"]
+    claude, t3, gws, codex = (entries[n] for n in ("claude", "t3", "gws", "codex"))
+    assert default_names(tools_list) == ["claude", "t3"]  # memory only: the rest are add-ons
+    assert [t["name"] for t in tools_list if t["required"]] == ["claude"]
+    assert all(isinstance(t["default"], bool) and isinstance(t["required"], bool) for t in tools_list)
+    assert claude["check"] == ["claude", "--version"]
     assert claude["install"] == {"type": "script", "url": "https://claude.ai/install.sh",
                                  "shell": "bash", "args": ["stable"]}
-    assert gws["required"] and gws["install"]["type"] == "archive-binary"
+    assert gws["install"]["type"] == "archive-binary"
     assert gws["install"]["version"] == "0.22.5" and gws["install"]["binary"] == "gws"
     assert gws["install"]["dest"] == "~/.local/bin/gws"
-    assert not codex["required"] and codex["install"]["shell"] == "sh"
+    assert codex["install"]["shell"] == "sh"
     assert codex["install"]["url"] == "https://chatgpt.com/codex/install.sh"
-    assert not t3["required"] and t3["install"]["app"] == APP
-    assert t3["install"]["version"] == "0.0.45"
-    for tool, algo, length in ((gws, "sha256", 64), (t3, "sha512", 128)):
-        assets = tool["install"]["assets"]
-        assert sorted(assets) == ["arm64", "x86_64"]
-        for asset in assets.values():
-            assert asset["url"].startswith("https://github.com/")
-            assert re.match(r"^[0-9a-f]{%d}$" % length, asset[algo])
-            assert tool["install"]["version"] in asset["url"]
+    # T3 Code is never pinned: no version, hash or app name, only its own update feed.
+    assert t3["install"] == {
+        "type": "mac-app-feed",
+        "feed": "https://github.com/pingdotgg/t3code/releases/latest/download/latest-mac.yml",
+        "zip_suffix": {"arm64": "-arm64.zip", "x86_64": "-x64.zip"},
+        "app_glob": mac_apps.T3_APP_GLOB}
+    assert mac_apps.T3_APP_GLOB == "T3 Code*.app"
+    assets = gws["install"]["assets"]
+    assert sorted(assets) == ["arm64", "x86_64"]
+    for asset in assets.values():
+        assert asset["url"].startswith("https://github.com/")
+        assert re.match(r"^[0-9a-f]{64}$", asset["sha256"])
+        assert gws["install"]["version"] in asset["url"]
 
 
 def test_detect_arch():
@@ -330,3 +339,167 @@ def test_cli_status_and_install(ws, monkeypatch, capsys):
     assert "claude" in capsys.readouterr().out
     assert cli_main(["--workspace", str(ws.root), "tools", "install", "helper"]) == 0
     assert "helper: to do by hand (Do it by hand.)" in capsys.readouterr().out
+
+
+# --- T3 Code from its own update feed (mac-app-feed) -----------------------------------------
+
+FEED = "https://github.com/pingdotgg/t3code/releases/latest/download/latest-mac.yml"
+FEED_BASE = FEED.rsplit("/", 1)[0]
+BETA = "T3 Code (Beta).app"
+
+
+def feed_tool() -> dict:
+    return {"name": "t3", "required": False, "default": True, "check": [],
+            "install": {"type": "mac-app-feed", "feed": FEED,
+                        "zip_suffix": {"arm64": "-arm64.zip", "x86_64": "-x64.zip"},
+                        "app_glob": "T3 Code*.app"}}
+
+
+def b64_sha512(path: Path) -> str:
+    import base64
+
+    return base64.b64encode(hashlib.sha512(Path(path).read_bytes()).digest()).decode()
+
+
+def feed_text(arm_sha: str, x64_sha: str = "", version: str = "0.1.9") -> str:
+    x64_sha = x64_sha or arm_sha
+    return (f"version: '{version}'\nfiles:\n"
+            f"  - url: T3-Code-{version}-arm64.zip\n    sha512: {arm_sha}\n    size: 9\n"
+            f"  - url: T3-Code-{version}-x64.zip\n    sha512: {x64_sha}\n    size: 9\n"
+            f"path: T3-Code-{version}-arm64.zip\nsha512: {arm_sha}\nreleaseDate: '2026-11-10T12:00:00.000Z'\n")
+
+
+def feed_runner(tmp_path, feed_body: str, zip_path: Path, app: str = BETA, version: str = "0.1.9"):
+    fake = arm(FakeRunner())
+    net = FakeNet(fake)
+    net.files[FEED] = write(tmp_path / "feed" / "latest-mac.yml", feed_body)
+    net.files[f"{FEED_BASE}/T3-Code-{version}-arm64.zip"] = zip_path
+
+    def ditto(argv):
+        if argv[1:3] == ["-x", "-k"]:
+            contents = Path(argv[4]) / app / "Contents"
+            (contents / "MacOS").mkdir(parents=True)
+            helper = contents / "Frameworks" / "T3 Code Helper.app"  # nested apps match the glob too
+            helper.mkdir(parents=True)
+            with open(str(contents / "Info.plist"), "wb") as handle:
+                plistlib.dump({"CFBundleShortVersionString": version}, handle)
+            (contents / "MacOS" / "T3 Code").write_text("app")
+            return Result(0)
+        shutil.copytree(argv[1], argv[2])
+        return Result(0)
+
+    return fake.on("ditto", result=ditto), net
+
+
+def test_feed_install_takes_the_current_release_and_checks_its_sha512(home, tmp_path):
+    zipped = write(tmp_path / "T3-Code-0.1.9-arm64.zip", b"zip bytes")
+    system = tmp_path / "Applications"
+    system.mkdir()
+    fake, net = feed_runner(tmp_path, feed_text(b64_sha512(zipped), "AAAA"), zipped)
+    outcome = install_tool(feed_tool(), fake, home, LOG, apps_dirs=[system, home / "Applications"])
+    assert (outcome.status, outcome.message) == ("installed", "0.1.9")
+    assert (system / BETA / "Contents" / "MacOS" / "T3 Code").read_text() == "app"
+    assert sorted(p.name for p in system.iterdir()) == [BETA]
+    assert net.downloads() == [FEED, f"{FEED_BASE}/T3-Code-0.1.9-arm64.zip"]
+
+
+def test_feed_install_refuses_a_download_that_does_not_verify(home, tmp_path):
+    zipped = write(tmp_path / "T3-Code-0.1.9-arm64.zip", b"zip bytes")
+    other = b64_sha512(write(tmp_path / "other.zip", b"something else"))
+    fake, _ = feed_runner(tmp_path, feed_text(other), zipped)
+    outcome = install_tool(feed_tool(), fake, home, LOG, apps_dirs=[tmp_path / "A", home / "Applications"])
+    assert outcome.status == "failed" and "sha512" in outcome.message
+    assert not any(c["argv"][0] == "ditto" for c in fake.calls)
+    assert not (home / "Applications").exists() or not list((home / "Applications").iterdir())
+
+
+@pytest.mark.parametrize("body, words", [
+    ("version: 0.1.9\nfiles:\n  - url: T3-Code-0.1.9-x64.zip\n    sha512: AAAA\n", "no download ending in -arm64.zip"),
+    ("files:\n  - url: T3-Code-0.1.9-arm64.zip\n    sha512: AAAA\n", "which version"),
+    ("version: 0.1.9\nfiles:\n  - url: http://example.invalid/T3-Code-0.1.9-arm64.zip\n    sha512: AAAA\n",
+     "won't use"),
+    ("version: 0.1.9\nfiles:\n  - url: ../T3-Code-0.1.9-arm64.zip\n    sha512: AAAA\n", "won't use"),
+    ("version: 0.1.9\nfiles:\n  - url: T3-Code-0.1.9-arm64.zip\n    sha512: AAAA\n", "wrong length"),
+    ("<html>Not Found</html>", "which version"),
+], ids=["no-arm-zip", "no-version", "http", "traversal", "short-hash", "junk"])
+def test_feed_problems_install_nothing(home, tmp_path, body, words):
+    zipped = write(tmp_path / "T3-Code-0.1.9-arm64.zip", b"zip bytes")
+    fake, net = feed_runner(tmp_path, body, zipped)
+    outcome = install_tool(feed_tool(), fake, home, LOG, apps_dirs=[tmp_path / "A", home / "Applications"])
+    assert outcome.status == "failed" and words in outcome.message, outcome.message
+    assert net.downloads() == [FEED]
+
+
+def test_feed_must_be_https_and_present(home):
+    tool = feed_tool()
+    tool["install"]["feed"] = "http://example.invalid/latest-mac.yml"
+    fake = arm(FakeRunner())
+    net = FakeNet(fake)
+    assert install_tool(tool, fake, home, LOG, apps_dirs=[home / "A"]).status == "failed"
+    tool["install"]["feed"] = "TODO"
+    assert install_tool(tool, fake, home, LOG, apps_dirs=[home / "A"]).status == "not-configured"
+    assert net.downloads() == []
+
+
+@pytest.mark.parametrize("name", ["T3 Code (Alpha).app", "T3 Code (Beta).app", "T3 Code.app"])
+def test_any_installed_t3_code_counts_as_present_and_is_left_alone(home, tmp_path, name):
+    system = tmp_path / "Applications"
+    (system / name / "Contents").mkdir(parents=True)
+    fake = arm(FakeRunner())
+    net = FakeNet(fake)
+    outcome = install_tool(feed_tool(), fake, home, LOG, apps_dirs=[system, home / "Applications"])
+    assert outcome.status == "present"
+    assert net.downloads() == [] and sorted(p.name for p in system.iterdir()) == [name]
+    status = tool_status(feed_tool(), FakeRunner(), home, apps_dirs=[system, home / "Applications"])
+    assert status.installed and status.where == str(system / name)
+
+
+def test_force_installs_the_current_app_beside_an_older_name(home, tmp_path):
+    system = tmp_path / "Applications"
+    (system / "T3 Code (Alpha).app" / "Contents").mkdir(parents=True)
+    zipped = write(tmp_path / "T3-Code-0.1.9-arm64.zip", b"zip bytes")
+    fake, _ = feed_runner(tmp_path, feed_text(b64_sha512(zipped)), zipped)
+    outcome = install_tool(feed_tool(), fake, home, LOG, force=True, apps_dirs=[system, home / "Applications"])
+    assert outcome.status == "installed"
+    assert sorted(p.name for p in system.iterdir()) == ["T3 Code (Alpha).app", BETA]
+
+
+def test_default_names_and_cli_install_with_no_names(ws, monkeypatch, capsys):
+    listing = [
+        {"name": "claude", "required": True, "check": ["claude", "--version"],
+         "install": {"type": "script", "url": "https://claude.ai/install.sh"}},
+        {"name": "helper", "check": ["helper"], "install": {"type": "manual", "instructions": "Do it."}},
+        {"name": "addon", "default": False, "check": ["addon"],
+         "install": {"type": "manual", "instructions": "Add it."}},
+        {"name": "musthave", "required": True, "default": False, "check": ["musthave"],
+         "install": {"type": "manual", "instructions": "Needed."}},
+    ]
+    assert default_names(listing) == ["claude", "helper", "musthave"]  # required always comes along
+    write(ws.tools_file, json.dumps({"tools": listing}))
+    fake = FakeRunner().on("claude", result=Result(0, "2.1.0 (Claude Code)\n"))
+    monkeypatch.setattr(tools, "Runner", lambda: fake)
+    assert cli_main(["--workspace", str(ws.root), "tools", "install"]) == 0
+    out = capsys.readouterr().out
+    assert "helper: to do by hand" in out and "addon" not in out
+    assert cli_main(["--workspace", str(ws.root), "tools", "install", "addon"]) == 0
+    assert "addon: to do by hand (Add it.)" in capsys.readouterr().out
+
+
+def test_parse_feed_reads_only_version_and_files(tmp_path):
+    import base64
+
+    digest_bytes = hashlib.sha512(b"x").digest()
+    sha = base64.b64encode(digest_bytes).decode()
+    text = ("# made by electron-builder\nversion: \"0.1.9\"\nfiles:\n"
+            f"- url: 'T3-Code-0.1.9-arm64.zip'\n  sha512: {sha}\n  size: 1\n"
+            f"- url: T3-Code-0.1.9-x64.zip\n  sha512: {sha}\n"
+            f"path: T3-Code-0.1.9-arm64.zip\nsha512: {sha}\n")
+    version, files = mac_apps.parse_feed(text)
+    assert version == "0.1.9" and [f["url"] for f in files] == ["T3-Code-0.1.9-arm64.zip",
+                                                               "T3-Code-0.1.9-x64.zip"]
+    found = mac_apps.feed_asset(text, FEED, "-x64.zip")
+    assert found == ("0.1.9", f"{FEED_BASE}/T3-Code-0.1.9-x64.zip", {"sha512": digest_bytes.hex()})
+    with pytest.raises(mac_apps.FeedError):
+        mac_apps.feed_asset(text, "http://example.invalid/latest-mac.yml", "-x64.zip")
+    with pytest.raises(mac_apps.FeedError):
+        mac_apps.sha512_hex("not base64!")

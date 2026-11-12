@@ -38,6 +38,16 @@ DENY = [
     "Read(~/.claude/.credentials.json)",
     "Read(~/.codex/auth.json)",
     "Read(~/Library/Keychains/**)",
+    # destructive commands: the owner's fixed "never" set, plus killall
+    "Bash(sudo *)",
+    "Bash(git clean *)",
+    "Bash(git reset --hard *)",
+    "Bash(git push --force *)",
+    "Bash(git push -f *)",
+    "Bash(rm -rf *)",
+    "Bash(rm -fr *)",
+    "Bash(pkill *)",
+    "Bash(killall *)",
 ]
 ALLOW = [
     "Bash(brain doctor *)",
@@ -74,6 +84,7 @@ CLI = {
     "update": {None: {"--check", "--yes"}},
     "rollback": {None: {"--list", "--snapshot"}},
     "tools": {"install": set(), "status": set()},
+    "trash": {None: set()},
 }
 SECRET_NAMES = {"slack", "claude-oauth-token", "airwallex-client-id", "airwallex-key"}
 JOBS = {"health", "slack_sync", "update_check", "brief", "weekly_review"}
@@ -152,7 +163,8 @@ def test_settings_allow_list_never_grants_state_changing_brain_commands():
     allow = json.loads(SETTINGS.read_text(encoding="utf-8"))["permissions"]["allow"]
     assert "Bash(brain *)" not in allow  # an unattended or injected run must not reach _apply etc.
     for rule in allow:
-        for risky in ("_apply", "update --yes", "secret set", "secret delete", "rollback", "install"):
+        for risky in ("_apply", "update --yes", "secret set", "secret delete", "rollback", "install",
+                      "trash"):
             assert risky not in rule, rule
 
 
@@ -185,6 +197,24 @@ def test_settings_hook_points_at_the_guard():
     assert guard.is_file(), f"hook target missing: {guard}"
 
 
+def test_settings_session_start_hook_runs_the_hidden_update_check():
+    """Memory-only brains have no schedule, so a new chat is where kit updates are mentioned."""
+    data = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    entries = data["hooks"]["SessionStart"]
+    assert [entry.get("matcher") for entry in entries] == ["startup"]
+    assert entries[0]["hooks"] == [{"type": "command", "command": "${CLAUDE_PROJECT_DIR}/.kit/bin/brain",
+                                    "args": ["_session-start"], "timeout": 10}]
+    assert (KIT / ".kit" / "bin" / "brain").is_file()
+    import sys
+
+    sys.path.insert(0, str(KIT / ".kit" / "lib"))
+    from brainkit.cli import build_parser
+    from brainkit.session_start import NETWORK_TIMEOUT
+
+    assert build_parser().parse_args(["_session-start"]).func.__module__ == "brainkit.session_start"
+    assert NETWORK_TIMEOUT * 2 <= entries[0]["hooks"][0]["timeout"], "curl must give up well before the hook"
+
+
 # ---------------------------------------------------------------- Codex and Slack
 
 
@@ -202,6 +232,36 @@ def test_codex_rules_forbid_sends():
     assert any('"+send"' in rule and '"gmail"' in rule for rule in rules)
     assert any(re.search(r'"users",\s*"messages",\s*"send"', rule) for rule in rules)
     assert any(re.search(r'"users",\s*"drafts",\s*"send"', rule) for rule in rules)
+
+
+def test_codex_rules_forbid_destructive_commands():
+    text = CODEX_RULES.read_text(encoding="utf-8")
+    rules = [line.strip() for line in text.splitlines() if line.strip().startswith("prefix_rule(")]
+
+    def ruled(*parts):
+        return [r for r in rules if all(p in r for p in parts)]
+
+    rm_rules = ruled('"rm"', '"/bin/rm"')
+    assert rm_rules and all("brain trash" in r for r in rm_rules)
+    for flag in ("-r", "-R", "-rf", "-fr", "-Rf", "--recursive"):
+        assert all(f'"{flag}"' in r.split("], [")[-1] for r in rm_rules), flag
+    assert any('"-f"' in r for r in rm_rules), "rm -f -r"
+    assert ruled('"sudo"') and ruled('"pkill"', '"killall"')
+    assert ruled('"git", "clean"') and ruled('"git", "reset", "--hard"')
+    push = ruled('"git", "push"')
+    assert push and all('"--force"' in r and '"-f"' in r and '"--force-with-lease"' in r for r in push)
+    for rule in rules:
+        if any(word in rule for word in ('"rm"', '"sudo"', '"pkill"', '"git"')):
+            assert re.search(r'justification = "[^"]+"', rule), rule
+            assert "\u2014" not in rule
+
+
+def test_agents_md_rules_say_trash_not_delete():
+    text = (KIT / "AGENTS.md").read_text(encoding="utf-8")
+    rules = text.split("## Hard rules", 1)[1].split("\n## ", 1)[0]
+    assert "`brain trash <path>`" in rules and "`sudo`" in rules
+    assert "Don't work around a block" in rules
+    assert re.findall(r"^(\d+)\. ", rules, re.M) == [str(n) for n in range(1, 10)]
 
 
 def test_slack_manifest_is_read_only_user_token():

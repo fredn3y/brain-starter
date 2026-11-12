@@ -5,6 +5,10 @@ description: Use when the user asks about their schedule, free time or when to m
 
 # Calendar and Drive
 
+Needs Google. If you don't know it's connected, run `brain google status`. Not connected: tell
+the user in one line and offer to connect it (`onboard` skill, `google` part). Meanwhile, ask them
+for their free times, or for the file's text.
+
 Read only. You can't create, move or accept calendar events, or change or share Drive files.
 
 ## Calendar

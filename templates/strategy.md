@@ -4,10 +4,10 @@
 
 Last reviewed: {{YYYY-MM-DD}}
 
-## The company now
+## My work now
 
-<!-- One paragraph: what the company does, for whom, and where it stands today. -->
-{{what the company does, for whom, and where it is now}}
+<!-- One paragraph: what your work or business is, who it's for, and where it stands today. -->
+{{what your work is, who it's for, and where it is now}}
 
 ## A great quarter
 
@@ -41,4 +41,4 @@ Last reviewed: {{YYYY-MM-DD}}
 ## Decision rules
 
 <!-- Rules of thumb your assistant should use when weighing things up. -->
-{{for example: customers before internal work; anything above a set amount needs my OK}}
+{{for example: clients and customers before admin; anything above a set amount needs my OK}}

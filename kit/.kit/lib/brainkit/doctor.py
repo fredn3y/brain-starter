@@ -1,7 +1,9 @@
 """`brain doctor [--json] [--quick]`: is everything the brain needs working?
 
 One small function per check, each returning Check(s) with status ok|warn|fail|info and a
-fix hint. A check that crashes becomes a "warn", so doctor itself never crashes. `quick` skips
+fix hint. Add-ons that were never set up (Google, Slack, the daily schedule) are "info" with a
+plain hint, so a fresh memory-only brain passes; something set up that broke is warn or fail.
+A check that crashes becomes a "warn", so doctor itself never crashes. `quick` skips
 network calls and the last-catch-up check (the health job runs doctor inside a catch-up).
 Commands run with the scheduled-run environment, so doctor sees what launchd jobs see.
 """
@@ -22,6 +24,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 from . import clock, kit_version
 from . import config as config_mod
 from . import secrets as keychain
+from .mac_apps import T3_APP_GLOB, find_app
 from .config import Config
 from .launchagent import job_env
 from .paths import Workspace
@@ -44,10 +47,12 @@ BROADER_SCOPES = {
     "calendar.readonly": ("calendar",),
     "drive.readonly": ("drive",),
 }
-T3_APP_PATHS = ["/Applications/T3 Code (Alpha).app", "~/Applications/T3 Code (Alpha).app"]
 CODEX_RULES = "~/.codex/rules/brain-starter.rules"
 CLAUDE_CONFIG = "~/.claude.json"
 GOOGLE_FIX = "run `brain google connect`"
+GOOGLE_ADD = 'to add it, say "connect Google" in a chat'
+SLACK_ADD = 'to add it, say "connect Slack" in a chat'
+SCHEDULE_ADD = 'to get a morning brief, say "turn on my morning brief" in a chat'
 REPORT_FIX = "run `brain report` and send the file to your consultant"
 
 disk_usage = shutil.disk_usage  # replaced in tests
@@ -75,6 +80,7 @@ class Context:
     now: datetime
     home: str
     settings_problems: List[str] = field(default_factory=list)
+    cache: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def mac(self) -> bool:
@@ -224,7 +230,7 @@ def check_claude_login(runner: Runner, exe: str = "claude", env: Optional[Dict[s
     reference, checked 2026-10-13); a JSON `"loggedIn": false` also counts as logged out. Any
     other outcome (timeout, crash) is a warning: we couldn't tell either way.
     """
-    fix = f"open Terminal, run `cd {folder} && claude`, log in with your work account, then type /exit"
+    fix = f"open Terminal, run `cd {folder} && claude`, log in with your Claude account, then type /exit"
     result = runner.run([exe, "auth", "status"], env=env, timeout=30)
     data = _json_or_none(result.stdout)
     if result.returncode == 1 or (isinstance(data, dict) and data.get("loggedIn") is False):
@@ -307,14 +313,16 @@ def _scope_name(scope: str) -> str:
 
 
 def check_google(ctx: Context) -> Check:
+    """Never set up (no gws, or no Google login saved) is info; a login that was saved and has
+    since expired, been revoked or lost permissions is a fail."""
     version, exe = run_tool(ctx, "gws", ["--version"])
     if not version.ok:
-        return Check("google", "fail", "the Google tool (gws) isn't installed", "run `brain tools install`")
+        return Check("google", "info", "Google isn't connected (optional)", GOOGLE_ADD)
     data = _json_or_none(ctx.run([exe, "auth", "status"]).stdout)
     if not isinstance(data, dict):
-        return Check("google", "fail", "couldn't read the Google connection status", GOOGLE_FIX)
+        return Check("google", "warn", "couldn't read the Google connection status", GOOGLE_FIX)
     if data.get("has_refresh_token") is not True:
-        return Check("google", "fail", "Google isn't connected", GOOGLE_FIX)
+        return Check("google", "info", "Google isn't connected (optional)", GOOGLE_ADD)
     if data.get("token_valid") is not True:
         return Check("google", "fail", "the Google login has expired or been revoked", GOOGLE_FIX)
     granted = {_scope_name(s) for s in data.get("scopes") or [] if isinstance(s, str)}
@@ -332,7 +340,7 @@ def check_slack(ctx: Context) -> Optional[Check]:
     except keychain.SecretError as exc:
         return Check("slack", "warn", str(exc), REPORT_FIX)
     if not present:
-        return Check("slack", "warn", "Slack isn't connected", "run `brain secret set slack --gui`")
+        return Check("slack", "info", "Slack isn't connected (optional)", SLACK_ADD)
     slack_api = None if ctx.quick else _optional_module("slack_api")
     if slack_api is None or not hasattr(slack_api, "auth_test"):
         return Check("slack", "ok", "token saved")
@@ -356,14 +364,23 @@ def check_slack(ctx: Context) -> Optional[Check]:
 # ---------------------------------------------------------------- schedule and machine
 
 
-def check_schedule(ctx: Context) -> Optional[Check]:
+def _schedule(ctx: Context) -> Optional[Dict[str, Any]]:
+    """launchd's view of the schedule (asked once per doctor run); None when not on a Mac."""
     if not ctx.mac:
         return None
-    from .launchagent import status
+    if "schedule" not in ctx.cache:
+        from .launchagent import status
 
-    info = status(ctx.ws, ctx.runner, home=ctx.home)
+        ctx.cache["schedule"] = status(ctx.ws, ctx.runner, home=ctx.home)
+    return ctx.cache["schedule"]
+
+
+def check_schedule(ctx: Context) -> Optional[Check]:
+    info = _schedule(ctx)
+    if info is None:
+        return None
     if not info["loaded"]:
-        return Check("schedule", "warn", "the daily schedule isn't installed", "run `brain schedule install`")
+        return Check("schedule", "info", "the daily schedule isn't set up (optional)", SCHEDULE_ADD)
     if info.get("points_here") is False:
         return Check("schedule", "warn", "the schedule points at a different brain folder",
                      "run `brain schedule install`")
@@ -376,6 +393,9 @@ def check_schedule(ctx: Context) -> Optional[Check]:
 
 def check_last_catchup(ctx: Context) -> Optional[Check]:
     if ctx.quick:  # inside a catch-up this check would only describe the gap being filled
+        return None
+    info = _schedule(ctx)
+    if not info or not info.get("loaded"):  # no schedule, so no catch-ups are expected
         return None
     row = RunsLedger(ctx.ws).last("catchup", status=None) or {}
     finished = clock.parse_iso(row.get("finished_at"))
@@ -426,7 +446,7 @@ def check_mdm(ctx: Context) -> Optional[Check]:
 def check_t3_app(ctx: Context) -> Optional[Check]:
     if not ctx.mac:
         return None
-    if any(ctx.expand(path).exists() for path in T3_APP_PATHS):
+    if find_app(T3_APP_GLOB, Path(ctx.home)) is not None:  # any "T3 Code*.app", as tools.py
         return Check("t3 app", "ok", "T3 Code is installed")
     return Check("t3 app", "info", "T3 Code (the chat window) isn't installed", "run `brain tools install t3`")
 

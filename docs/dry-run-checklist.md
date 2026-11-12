@@ -1,17 +1,66 @@
-# Mac dry run (about 1 hour)
+# Mac dry run
 
-Run this on your own Mac before the first client session and after any big kit change. Every
-item marked **(check on the dry run)** is something the research could not confirm from official
+Run this on your own Mac before the first real session and after any big kit change. Every item
+marked **(check on the dry run)** is something the research could not confirm from official
 sources: write down what you saw and fix the kit's wording or code if it differs.
 
-## Setup
+Start with the memory-only gate (about 30 minutes): it is what every new user gets. The numbered
+gates after it (about 1 hour) cover the details and the add-ons.
+
+## Runs so far
+
+- 12 Nov 2026, v0.2.0 test build, MacBook Air, Apple silicon, macOS 26.6.2, a new Standard
+  user. Claude Code (Homebrew, 2.1.311) and T3 Code (0.1.9, `/Applications/T3 Code (Beta).app`)
+  were already on the Mac, so neither download ran. Passed: the installer and its next steps;
+  Apple's Python 3.9.6; `brain` found in a new login shell; `brain doctor` with no `fail`
+  except Claude login before sign-in, and Time Machine as the only other `warn`; Google, Slack
+  and the schedule shown as information; `MDM enrollment: No` read without sudo; the hook
+  blocking `rm -rf` (exit 2); `brain trash` moving a file to the Trash from Terminal. After
+  signing in to Claude: T3 Code opened the brain folder, "set me up" started the interview and
+  said about 30 minutes, and a T3 Claude thread refused `rm -rf` and used the Trash instead.
+  Not covered: memory-only gate items 1 (fresh downloads), 7 (update notice) and 9, the full
+  interview, and every numbered gate below.
+
+## Memory-only gate
+
+On a new standard macOS user account, with a personal Claude plan (Pro) if you can, so the run
+matches a freelancer's Mac. Note the Mac model, chip and macOS version: ______
+
+1. Clean install: run the install line (for a version that isn't released yet, the
+   `BRAIN_KIT_TARBALL` form in gate 1). It fetches only Claude Code and T3 Code: afterwards
+   `command -v gws` and `command -v codex` print nothing, and no background item is added
+   (`brain schedule status` says it isn't installed; nothing new in System Settings, General,
+   Login Items).
+2. The printed next steps read: open a new Terminal window, `cd ~/brain && claude`, trust the
+   folder, log in with your Claude account, `/exit`, then open T3 Code, add the brain folder,
+   start a Claude thread and type "set me up". Follow them exactly.
+3. Claude login works with a Pro account (and a Team seat, if you have one): `claude auth status
+   --text` shows it. Note the login menu wording (expected "Claude account with subscription")
+   (check on the dry run).
+4. T3 Code finds the brain folder and its skills: in a Claude thread, `$` lists the kit skills.
+5. "Set me up" runs the health check, then the interview, people, voice and tasks only. No step
+   asks about Google, Slack or the schedule, and nothing reads mail. The files it saves have no
+   `{{` left and `.kit/config.json` is still valid JSON.
+6. `brain doctor`: no `fail`. Google, Slack and the schedule show as not set up, as
+   information. The only `warn` to expect is Time Machine, when the Mac has no backup disk.
+7. Update notice: publish a newer test release to a test repo and point `kit_repo` at it (see
+   gate 11). Start a new Claude thread in T3 Code. Expect the assistant to say in one line that an
+   update is available and offer it; on "yes" it runs `brain update --yes` and the user's files
+   are unchanged. A Codex thread gets no notice (expected).
+8. T3 Code is recognised whatever its app name: doctor's `t3 app` check is ok with the app as
+   installed. Note its name in `/Applications`: ______ (expected `T3 Code (Beta).app`).
+9. The "Help improve our AI models" setting is at claude.ai under Settings, Privacy, as the
+   runbook says (check on the dry run).
+10. Command Line Tools: note how long `xcode-select --install` took and whether it asked for the
+    Mac password: ______
+
+## Setup for the numbered gates
 
 - A new standard macOS user account on your Mac, so the install starts clean.
-- Google: a Workspace account in **your own test organization**. Internal apps need an
+- For the add-ons, Google: a Workspace account in **your own test organization**. Internal apps need an
   organization; a personal Gmail account can't create one. Never use a client's organization.
 - Slack: a free test workspace where you can install apps.
 - A recipient address you own for the send tests, so the worst case is an email to yourself.
-- Note the Mac model, chip and macOS version here: ______
 
 ## Gates
 
@@ -19,8 +68,8 @@ sources: write down what you saw and fix the kit's wording or code if it differs
 
 1. Terminal: `curl -fsSL https://github.com/fredn3y/brain-starter/releases/latest/download/install.sh | bash`.
    Expect: it finishes, `~/brain` exists, `brain --version` prints the kit version.
-   Before the repo is public: build with `python3 tools/build_release.py`, copy `dist/` to the
-   Mac, then run `BRAIN_KIT_TARBALL=~/Downloads/dist/brain-starter-v0.1.0.tar.gz
+   To test a version before it is released: build with `python3 tools/build_release.py`, copy `dist/` to the
+   Mac, then run `BRAIN_KIT_TARBALL=~/Downloads/dist/brain-starter-vX.Y.Z.tar.gz
    BRAIN_KIT_SUMS=~/Downloads/dist/SHA256SUMS bash ~/Downloads/dist/install.sh`.
 2. Without Command Line Tools, nothing may call `/usr/bin/python3` before checking for them,
    since that pops Apple's install dialog. Note the exact `xcode-select` error and the
@@ -28,16 +77,17 @@ sources: write down what you saw and fix the kit's wording or code if it differs
 3. `xcode-select -p` can print a folder that no longer exists; confirm doctor still catches
    missing tools (check on the dry run).
 4. Python version from the Command Line Tools on macOS 27 (expected 3.9.6): ______ (check on the dry run)
-5. gws downloaded by the installer runs without a Gatekeeper warning (the arm64 build is ad-hoc
-   signed, the Intel build unsigned; curl downloads aren't quarantined) (check on the dry run).
+5. gws, fetched on request by `brain google connect` or `brain tools install gws`, runs without a
+   Gatekeeper warning (the arm64 build is ad-hoc signed, the Intel build unsigned; curl downloads
+   aren't quarantined) (check on the dry run).
 6. Intel Macs or Rosetta: `uname -m` and `sysctl -in sysctl.proc_translated` output, including
    empty output on Intel: ______ (check on the dry run)
 
 ### 2. Claude trust and login
 
 1. `cd ~/brain && claude`. Expect a trust prompt for the folder (note its exact wording; doctor's
-   fix text names it) (check on the dry run), then login: Claude account with subscription, the
-   Team plan, Authorize. Type `/exit`.
+   fix text names it) (check on the dry run), then login: Claude account with subscription,
+   Authorize. Type `/exit`.
 2. `claude auth status`: JSON with `"loggedIn": true`, exit 0. Then `claude auth status --text`.
    Also note the `--text` wording when logged out (check on the dry run).
 3. Does any Team org setting gate Claude Code itself beyond the seat? (check on the dry run)
@@ -46,7 +96,8 @@ sources: write down what you saw and fix the kit's wording or code if it differs
 
 ### 3. Doctor
 
-1. `brain doctor`. Expect no `fail`; `warn` only for parts not set up yet.
+1. `brain doctor`. Expect no `fail`. Google, Slack and the schedule show as information until
+   they are set up.
 2. `tmutil destinationinfo` with no backup disk: exact text: ______ (doctor looks for "No
    destinations configured") (check on the dry run)
 3. `profiles status -type enrollment` works without sudo, and its lines read "MDM enrollment:"
@@ -157,6 +208,28 @@ Use your own address. Each must fail without sending anything.
 6. Codex end to end in T3 Full access (`never` + `danger-full-access`): ask a Codex thread to run
    the same send. Expect the rule to refuse it (check on the dry run).
 
+Then the same for a delete, on a throwaway folder only:
+`mkdir -p ~/trash-test/inner && touch ~/trash-test/inner/a.txt`. After each of steps 7 to 10,
+`ls ~/trash-test/inner` must still show `a.txt`. The gws wrapper doesn't apply here.
+
+7. Hook: `echo '{"tool_name":"Bash","tool_input":{"command":"rm -rf ~/trash-test"}}' | CLAUDE_PROJECT_DIR=~/brain ~/brain/.kit/bin/brain-guard; echo $?`
+   Expect exit 2 and a message ending with the `brain trash <path>` line. Repeat with
+   `/bin/rm -r -f ~/trash-test`, `sh -c 'rm -Rf ~/trash-test'` and `sudo rm -fr ~/trash-test`:
+   all exit 2. `rm ~/trash-test/inner/none.txt` exits 0.
+8. Deny rule: `cd ~/brain && claude -p 'Run exactly: rm -rf ~/trash-test' --settings '{"disableAllHooks": true}'`.
+   Expect a permission-rule denial, with the hook switched off for that run (check on the dry
+   run that `--settings` turns the hook off; if not, note how the denial was worded).
+9. Codex rule: `codex execpolicy check --pretty --rules ~/.codex/rules/brain-starter.rules -- rm -rf ~/trash-test`
+   Expect `"decision": "forbidden"`; the same for `rm -f -r ~/trash-test`, `sudo ls` and
+   `git push --force`. `rm ~/trash-test/inner/a.txt` gives no match (don't run it).
+10. `brain trash`: `brain trash ~/trash-test` prints `Moved /Users/<user>/trash-test to the Trash.`
+    and the folder shows in Finder's Trash. Make the folder again and trash it again:
+    expect `as "trash-test 2"`. `brain trash ~/brain` and `brain trash /tmp` both print
+    `Not moved` and change nothing. Note whether macOS asked for any permission (check on the
+    dry run). Empty the test folders from the Trash by hand.
+11. End to end: ask a T3 Claude thread, then a Codex thread, to "delete ~/trash-test with
+    rm -rf". Expect a block, then `brain trash` used or offered, and a line saying what was moved.
+
 ### 11. Update and rollback
 
 1. Publish test releases v0.1.0 and v0.1.1 to a test repo and point `kit_repo` in
@@ -169,18 +242,26 @@ Use your own address. Each must fail without sending anything.
 
 ### 12. T3 Code
 
-1. T3 is signed and notarized: `spctl -a -vv "/Applications/T3 Code (Alpha).app"` and
-   `xcrun stapler validate "/Applications/T3 Code (Alpha).app"` (check on the dry run).
-2. Add `~/brain` as a project. In a Claude thread, `$` lists the kit skills; ask "what are your
+1. The installer took T3's current release, not a pinned one, and checked the download against the
+   sha512 in T3's `latest-mac.yml`. Note the version installed: ______ (v0.1.9 was latest on
+   12 Nov 2026).
+2. T3 is signed and notarized: `spctl -a -vv "/Applications/T3 Code (Beta).app"` and
+   `xcrun stapler validate "/Applications/T3 Code (Beta).app"` (use the name noted in the
+   memory-only gate) (check on the dry run).
+3. On first open, note any welcome or setup screens and whether they find Claude Code on their
+   own (check on the dry run).
+4. T3's own updater: when the app offers an update, take it. Afterwards doctor's `t3 app` check is
+   still ok and the brain project still opens (check on the dry run).
+5. Add `~/brain` as a project. In a Claude thread, `$` lists the kit skills; ask "what are your
    hard rules?" and expect the `AGENTS.md` rules.
-3. In a Codex thread, `$` lists the same skills (through the per-skill links in
+6. With Codex installed (`brain tools install codex`), in a Codex thread, `$` lists the same skills (through the per-skill links in
    `.agents/skills/`), and Codex follows `AGENTS.md` (T3 has no AGENTS.md logic of its own; this
    relies on Codex's own discovery) (check on the dry run).
-4. Optional, not used by the kit: T3 with `disableBypassPermissionsMode` set (check on the dry
+7. Optional, not used by the kit: T3 with `disableBypassPermissionsMode` set (check on the dry
    run); pre-setting T3's default by editing `~/.t3/userdata/settings.json` (`defaultRuntimeMode`)
    (check on the dry run); a whole-folder `.agents/skills` link instead of per-skill links (check
    on the dry run).
-5. "Auto-accept edits" in T3: does Codex lose network access for gws, as expected? (check on the
+8. "Auto-accept edits" in T3: does Codex lose network access for gws, as expected? (check on the
    dry run)
 
 ### 13. Admin and data checks
@@ -193,7 +274,20 @@ Use your own address. Each must fail without sending anything.
 3. Airwallex setup prompt D: every screen name in it is unresearched; walk it once before any
    client uses it (check on the dry run).
 
-### 14. Clean up
+### 14. Remote link (last resort)
+
+Needs a second machine that belongs to someone else, or a second account of your own.
+
+1. On the Mac: Settings → Labs → Linked environments on; Settings → Sharing & access → T3
+   Connect on; create a pairing link. Note the exact labels (check on the dry run).
+2. From the helper's machine, link at `approval-required` with the Mac's T3 Connect address and
+   the code. Does a link work when the two machines are on different T3 Connect accounts?
+   (check on the dry run)
+3. Start one harmless task there (`brain doctor`). Where is each approval answered: on the Mac,
+   or from the helper's side? (check on the dry run)
+4. Revoke the link on the Mac. The helper's next task must fail with that reason.
+
+### 15. Clean up
 
 `brain schedule uninstall`, remove the Slack test app, delete the test Google client, and delete
 the test macOS user.

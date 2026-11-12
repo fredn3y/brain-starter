@@ -5,7 +5,9 @@ slip past them. This hook looks at the whole command string instead. It blocks:
 - sending email (gws send/reply/forward, raw Gmail send API calls) and posting to Slack;
 - reading stored secrets (Keychain password reads, credential files);
 - edits to kit-owned files (they are replaced on update; the user's changes belong in
-  user-owned files).
+  user-owned files);
+- destructive commands: recursive `rm`, `sudo`, `pkill`, `killall`, `git clean`,
+  `git reset --hard` and force-pushes (rules in destructive.py).
 
 It is defence in depth, not a sandbox: a determined agent could still get around it.
 Exit code 2 blocks the call and shows stderr to the agent; anything unexpected allows the
@@ -22,7 +24,10 @@ import sys
 from pathlib import Path
 from typing import Iterable, List, Optional, Set
 
+from . import destructive
+
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
+SHELL_C_FLAG = re.compile(r"^-[a-zA-Z]*c[a-zA-Z]*$")
 SECRET_SUBCOMMANDS = {"find-generic-password", "find-internet-password", "dump-keychain", "export",
                       "find-certificate", "export-keychain"}
 
@@ -79,8 +84,9 @@ def _check_tokens(tokens: List[str], depth: int) -> Optional[str]:
     for index, token in enumerate(tokens):
         name = _base(token)
         rest = tokens[index + 1:]
-        if name in SHELLS and "-c" in rest and depth < 3:
-            inner = rest[rest.index("-c") + 1:]
+        if name in SHELLS and depth < 3:
+            flag = next((t for t in rest if SHELL_C_FLAG.match(t)), None)  # `-c`, `-lc`, `-ic` …
+            inner = rest[rest.index(flag) + 1:] if flag else []
             if inner:
                 found = check_command(" ".join(inner), depth + 1)
                 if found:
@@ -105,6 +111,9 @@ def _check_tokens(tokens: List[str], depth: int) -> Optional[str]:
             return "`brain _apply` is internal; use `brain update`"
         if token == "_apply" and any(_base(t) == "brain" for t in tokens[:index]):
             return "`brain _apply` is internal; use `brain update`"
+        found = destructive.check(name, rest)
+        if found:
+            return found
     return None
 
 
@@ -118,8 +127,12 @@ def check_command(command: str, depth: int = 0) -> Optional[str]:
             return f"Blocked by your brain's safety rules: {reason}."
     for segment in _segments(command):
         reason = _check_tokens(_tokens(segment), depth)
+        if reason and reason.startswith("Blocked"):  # already a full message (`sh -c`, `eval`)
+            return reason
         if reason:
             hint = f" {FIX_HINT}" if reason == SEND_REASON else ""
+            if reason in destructive.DELETE_REASONS:
+                hint = f" {destructive.TRASH_HINT}"
             return f"Blocked by your brain's safety rules: {reason}.{hint}"
     return None
 

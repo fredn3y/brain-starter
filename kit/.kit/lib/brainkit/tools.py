@@ -1,20 +1,25 @@
-"""`brain tools status|install`: the outside programs the brain relies on, pinned in `.kit/tools.json`.
+"""`brain tools status|install`: the outside programs the brain relies on, listed in `.kit/tools.json`.
 
 Install types:
 - script: the vendor's official installer, `curl -fsSL <url> | <shell> [-s <args>]`;
 - archive-binary: pinned download, hash check, unpack, copy one binary to `dest` (0755);
 - mac-app-zip: pinned download, hash check, `ditto -x -k`, then the .app goes to /Applications
   (or ~/Applications when /Applications isn't writable);
+- mac-app-feed: like mac-app-zip, but the download and its sha512 come from the app's own
+  update feed (`feed`, see mac_apps.py), so nothing is pinned; `app_glob` names the app, and any
+  installed app matching it counts as present (the app updates itself);
 - manual: print the instructions.
 Assets carry "sha256" and/or "sha512" (hex). A "TODO" url or hash is refused, never guessed.
+`required`: setup isn't finished without it. `default` (absent = true): installed by a fresh
+`brain install` and by `brain tools install` with no names; the rest are add-ons by name.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
-import plistlib
 import re
 import shlex
 import shutil
@@ -26,16 +31,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import http
+from .mac_apps import (FeedError, app_version, apps_target, feed_asset, find_app,
+                       remove_tree)
 from .runner import Runner
 from .safe_tar import UnsafeArchiveError, safe_extract, safe_unzip
 
 TODO = "TODO"
-TYPES = ("script", "archive-binary", "mac-app-zip", "manual")
+TYPES = ("script", "archive-binary", "mac-app-zip", "mac-app-feed", "manual")
+APP_TYPES = ("mac-app-zip", "mac-app-feed")
 SHELLS = ("bash", "sh")
 HASH_LENGTHS = {"sha256": 64, "sha512": 128}
 ARCH_ALIASES = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "x86_64", "amd64": "x86_64"}
 TAR_SUFFIXES = (".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tar")
-SYSTEM_APPS = Path("/Applications")
 KIT_TOOLS_FILE = Path(__file__).resolve().parents[2] / "tools.json"
 CHECK_TIMEOUT = 30
 INSTALL_TIMEOUT = 1200
@@ -93,6 +100,15 @@ def tools_file(ws) -> Path:
     return ws.tools_file if ws.tools_file.is_file() else KIT_TOOLS_FILE
 
 
+def is_default(tool: Dict[str, Any]) -> bool:
+    return bool(tool.get("default", True))
+
+
+def default_names(tools: List[Dict[str, Any]]) -> List[str]:
+    """The tools a fresh install gets (the rest are add-ons, installed by name)."""
+    return [t["name"] for t in tools if is_default(t) or t.get("required")]
+
+
 def select(tools: List[Dict[str, Any]], names: Optional[Sequence[str]]) -> List[Dict[str, Any]]:
     if not names:
         return list(tools)
@@ -115,26 +131,11 @@ def detect_arch(runner: Runner) -> str:
 
 # --- status -------------------------------------------------------------------------------
 
-def _apps_dirs(home: Path, apps_dirs: Optional[Sequence[Path]]) -> List[Path]:
-    if apps_dirs is not None:
-        return [Path(p) for p in apps_dirs]
-    return [SYSTEM_APPS, Path(home) / "Applications"]
-
-
-def find_app(app: str, home: Path, apps_dirs: Optional[Sequence[Path]] = None) -> Optional[Path]:
-    for folder in _apps_dirs(home, apps_dirs):
-        if app and (folder / app).is_dir():
-            return folder / app
-    return None
-
-
-def _app_version(app: Path) -> str:
-    try:
-        with open(str(app / "Contents" / "Info.plist"), "rb") as handle:
-            info = plistlib.load(handle)
-        return str(info.get("CFBundleShortVersionString") or info.get("CFBundleVersion") or "")
-    except Exception:  # a broken plist must not break `brain tools status`
-        return ""
+def app_pattern(tool: Dict[str, Any]) -> str:
+    """The .app a mac-app-* tool installs: an exact name (mac-app-zip) or a glob (mac-app-feed)."""
+    install = tool.get("install") or {}
+    key = "app_glob" if install.get("type") == "mac-app-feed" else "app"
+    return str(install.get(key) or "")
 
 
 def expand(path_text: str, home: Path) -> Path:
@@ -158,9 +159,9 @@ def tool_status(tool: Dict[str, Any], runner: Runner, home: Path,
                 apps_dirs: Optional[Sequence[Path]] = None) -> ToolStatus:
     name, required = tool["name"], bool(tool.get("required"))
     install = tool.get("install") or {}
-    if install.get("type") == "mac-app-zip":
-        app = find_app(str(install.get("app") or ""), home, apps_dirs)
-        return ToolStatus(name, required, app is not None, _app_version(app) if app else "",
+    if install.get("type") in APP_TYPES:
+        app = find_app(app_pattern(tool), home, apps_dirs)
+        return ToolStatus(name, required, app is not None, app_version(app) if app else "",
                           str(app or ""))
     check = [str(arg) for arg in tool.get("check") or []]
     flags = check[1:] or ["--version"]
@@ -227,14 +228,16 @@ def _verify(path: Path, hashes: Dict[str, str]) -> None:
             raise ToolError(f"the download didn't match its {algo} checksum; nothing was installed")
 
 
-def _find(root: Path, name: str, want_dir: bool) -> Optional[Path]:
-    """Shallowest entry called `name` (a plain file, or a folder when want_dir)."""
+def _find(root: Path, name: str, want_dir: bool, glob: bool = False) -> Optional[Path]:
+    """Shallowest entry called `name` (a plain file, or a folder when want_dir); with glob,
+    `name` is a pattern."""
     best = None
     for dirpath, dirnames, filenames in os.walk(str(root)):
         dirnames.sort()
         for entry in (dirnames if want_dir else filenames):
             path = Path(dirpath) / entry
-            if entry == name and not path.is_symlink():
+            matched = fnmatch.fnmatchcase(entry, name) if glob else entry == name
+            if matched and not path.is_symlink():
                 depth = len(path.relative_to(root).parts)
                 if best is None or depth < best[0]:
                     best = (depth, path)
@@ -292,53 +295,72 @@ def _install_archive_binary(tool: Dict[str, Any], runner: Runner, home: Path, ar
         shutil.rmtree(str(work), ignore_errors=True)
 
 
-def _apps_target(home: Path, apps_dirs: Optional[Sequence[Path]]) -> Path:
-    folders = _apps_dirs(home, apps_dirs)
-    system, user = folders[0], folders[-1]
-    if system.is_dir() and os.access(str(system), os.W_OK):
-        return system
-    user.mkdir(parents=True, exist_ok=True)
-    return user
+def _check_pattern(tool: Dict[str, Any]) -> str:
+    pattern = app_pattern(tool)
+    if not pattern.endswith(".app") or "/" in pattern:
+        raise ToolError(f"{tool['name']}: bad app name {pattern!r}")
+    return pattern
 
 
-def _remove_tree(path: Path) -> None:
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    elif path.is_dir():
-        shutil.rmtree(str(path))
+def _install_app_zip(runner: Runner, url: str, hashes: Dict[str, str], pattern: str, glob: bool,
+                     work: Path, home: Path, apps_dirs: Optional[Sequence[Path]]) -> None:
+    """Download, verify, unpack with ditto, then swap the app into the Applications folder."""
+    archive = _download(runner, url, work)
+    _verify(archive, hashes)
+    unpack = work / "unpacked"
+    unpack.mkdir()
+    result = runner.run(["ditto", "-x", "-k", str(archive), str(unpack)], timeout=INSTALL_TIMEOUT)
+    if not result.ok:
+        raise ToolError(f"couldn't unpack {archive.name}: "
+                        f"{_first_line(result.stderr, result.stdout)}")
+    source = _find(unpack, pattern, want_dir=True, glob=glob)
+    if source is None:
+        raise ToolError(f"{pattern} wasn't found inside the download")
+    app = source.name
+    target = apps_target(home, apps_dirs)
+    dest, staging, old = target / app, target / f"{app}.brain-new", target / f"{app}.brain-old"
+    for leftover in (staging, old):
+        remove_tree(leftover)
+    result = runner.run(["ditto", str(source), str(staging)], timeout=INSTALL_TIMEOUT)
+    if not result.ok:
+        raise ToolError(f"couldn't copy {app} into {target}: "
+                        f"{_first_line(result.stderr, result.stdout)}")
+    if os.path.lexists(str(dest)):
+        os.rename(str(dest), str(old))
+    os.rename(str(staging), str(dest))
+    remove_tree(old)
 
 
 def _install_mac_app(tool: Dict[str, Any], runner: Runner, home: Path, arch: str,
                      apps_dirs: Optional[Sequence[Path]]) -> None:
-    app = str(tool["install"].get("app") or "")
-    if not app.endswith(".app") or "/" in app:
-        raise ToolError(f"{tool['name']}: bad app name {app!r}")
+    pattern = _check_pattern(tool)
     url, hashes = _asset(tool, arch)
     work = Path(tempfile.mkdtemp(prefix="brain-tool-"))
     try:
-        archive = _download(runner, url, work)
-        _verify(archive, hashes)
-        unpack = work / "unpacked"
-        unpack.mkdir()
-        result = runner.run(["ditto", "-x", "-k", str(archive), str(unpack)], timeout=INSTALL_TIMEOUT)
-        if not result.ok:
-            raise ToolError(f"couldn't unpack {app}: "
-                            f"{_first_line(result.stderr, result.stdout)}")
-        source = _find(unpack, app, want_dir=True)
-        if source is None:
-            raise ToolError(f"{app} wasn't found inside the download")
-        target = _apps_target(home, apps_dirs)
-        dest, staging, old = target / app, target / f"{app}.brain-new", target / f"{app}.brain-old"
-        for leftover in (staging, old):
-            _remove_tree(leftover)
-        result = runner.run(["ditto", str(source), str(staging)], timeout=INSTALL_TIMEOUT)
-        if not result.ok:
-            raise ToolError(f"couldn't copy {app} into {target}: "
-                            f"{_first_line(result.stderr, result.stdout)}")
-        if os.path.lexists(str(dest)):
-            os.rename(str(dest), str(old))
-        os.rename(str(staging), str(dest))
-        _remove_tree(old)
+        _install_app_zip(runner, url, hashes, pattern, False, work, home, apps_dirs)
+    finally:
+        shutil.rmtree(str(work), ignore_errors=True)
+
+
+def _install_mac_app_feed(tool: Dict[str, Any], runner: Runner, home: Path, arch: str,
+                          apps_dirs: Optional[Sequence[Path]]) -> None:
+    """The current release from the app's own feed: no version or hash is pinned here."""
+    name, install = tool["name"], tool["install"]
+    pattern = _check_pattern(tool)
+    feed = str(install.get("feed") or "")
+    if not feed or feed == TODO:
+        raise NotConfigured(f"{name} has no update feed address yet")
+    if not feed.startswith("https://"):
+        raise ToolError(f"{name}: refusing an update feed that isn't https")
+    suffix = str((install.get("zip_suffix") or {}).get(arch) or "")
+    if not suffix:
+        raise ToolError(f"no {name} download for this Mac ({arch})")
+    work = Path(tempfile.mkdtemp(prefix="brain-tool-"))
+    try:
+        feed_file = _download(runner, feed, work)
+        text = feed_file.read_text(encoding="utf-8", errors="replace")
+        _version, url, hashes = feed_asset(text, feed, suffix)
+        _install_app_zip(runner, url, hashes, pattern, True, work, home, apps_dirs)
     finally:
         shutil.rmtree(str(work), ignore_errors=True)
 
@@ -366,12 +388,14 @@ def install_tool(tool: Dict[str, Any], runner: Runner, home: Path, log, arch: Op
             _install_archive_binary(tool, runner, home, arch or detect_arch(runner))
         elif kind == "mac-app-zip":
             _install_mac_app(tool, runner, home, arch or detect_arch(runner), apps_dirs)
+        elif kind == "mac-app-feed":
+            _install_mac_app_feed(tool, runner, home, arch or detect_arch(runner), apps_dirs)
         else:
             raise ToolError(f"unknown install type {kind!r}")
     except NotConfigured as exc:
         return Outcome(name, "not-configured", f"{exc}. Ask your consultant.")
-    except (ToolError, http.HttpError, UnsafeArchiveError, tarfile.TarError, zipfile.BadZipFile,
-            OSError) as exc:
+    except (ToolError, http.HttpError, FeedError, UnsafeArchiveError, tarfile.TarError,
+            zipfile.BadZipFile, OSError) as exc:
         log.warning("tool %s: install failed: %s", name, exc)
         return Outcome(name, "failed", str(exc))
     status = tool_status(tool, runner, home, apps_dirs)
@@ -388,8 +412,7 @@ def install_many(tools: List[Dict[str, Any]], runner: Runner, home: Path, log,
     arch = None
     outcomes = []
     for tool in chosen:
-        if arch is None and (tool.get("install") or {}).get("type") in ("archive-binary",
-                                                                         "mac-app-zip"):
+        if arch is None and (tool.get("install") or {}).get("type") in ("archive-binary",) + APP_TYPES:
             arch = detect_arch(runner)
         outcomes.append(install_tool(tool, runner, home, log, arch=arch, force=force,
                                      apps_dirs=apps_dirs))
@@ -411,8 +434,9 @@ def register(subparsers) -> None:
     status = actions.add_parser("status", help="show which tools are installed")
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=_cmd_status)
-    install = actions.add_parser("install", help="install missing tools")
-    install.add_argument("names", nargs="*", help="only these tools (default: all)")
+    install = actions.add_parser("install", help="install missing tools (or add-ons by name)")
+    install.add_argument("names", nargs="*",
+                         help="these tools, e.g. gws or codex (default: the standard set)")
     install.add_argument("--force", action="store_true", help="reinstall even if present")
     install.set_defaults(func=_cmd_install)
     parser.set_defaults(func=_cmd_status, json=False)
@@ -447,8 +471,8 @@ def _cmd_install(args) -> int:
     ws = _workspace(args)
     try:
         tools = load_tools(tools_file(ws))
-        outcomes = install_many(tools, Runner(), Path.home(), get_logger(ws), names=args.names,
-                                force=args.force)
+        outcomes = install_many(tools, Runner(), Path.home(), get_logger(ws),
+                                names=args.names or default_names(tools), force=args.force)
     except ToolError as exc:
         print(f"brain tools: {exc}")
         return 2

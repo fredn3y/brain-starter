@@ -1,8 +1,9 @@
 # Setup prompts for Claude in Chrome
 
-Some setup happens on websites: Google Cloud, Slack and, later, Airwallex. Claude in Chrome (the
-Claude extension in your Chrome browser) can click through those pages with you. Your assistant
-shows you the right prompt during setup; this file keeps them all in one place.
+Some extras are set up on websites: Google Cloud, Slack and, later, Airwallex. Claude in Chrome
+(the Claude extension in your Chrome browser) can click through those pages with you. Your
+assistant shows you the right prompt when you ask for an extra; this file keeps them all in one
+place.
 
 How to use one:
 
@@ -24,10 +25,10 @@ Rules for this whole task:
 - At the end, or if you get stuck, list what's done and what isn't, then say "This ends your run."
 ```
 
-## A. Claude admin (for your company's Claude Owner)
+## A. Claude admin (Team plans only, for the plan's Owner)
 
-Only needed if Claude says "You haven't been added to your organization yet". Send this to the
-person who manages your company's Claude plan. They replace `<teammate's work email>` first.
+Only needed on a Team plan, if Claude says "You haven't been added to your organization yet".
+Send this to the person who manages your company's Claude plan. They replace `<teammate's work email>` first.
 
 ```text
 I'm the Claude Owner for my company. A teammate is setting up an AI work assistant that uses Claude Code on their Mac. Please help me check our settings.

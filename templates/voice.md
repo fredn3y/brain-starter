@@ -1,6 +1,6 @@
 # My voice
 
-<!-- How you write, so drafts sound like you. Built from your sent mail and Slack during setup; edit any time. -->
+<!-- How you write, so drafts sound like you. Built during setup from a few things you've written; edit any time. -->
 
 ## Email
 
@@ -10,9 +10,9 @@
 - Length: {{for example: three to five short lines; bullets only for lists}}
 - Tone: {{for example: warm, direct, no fuss}}
 
-## Slack
+## Messages
 
-<!-- How your Slack messages differ from email. -->
+<!-- How your chat messages (Slack, Teams, WhatsApp and the like) differ from email. -->
 - Style: {{for example: lowercase, no greeting, one or two lines, the odd emoji}}
 
 ## Phrases

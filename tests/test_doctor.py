@@ -10,7 +10,7 @@ from collections import namedtuple
 
 import pytest
 
-from brainkit import cli, doctor
+from brainkit import cli, doctor, mac_apps
 from brainkit import secrets as keychain
 from brainkit.config import Config
 from brainkit.paths import Workspace
@@ -65,7 +65,7 @@ class Mac:
         self.trust(True)
         (self.home / ".codex" / "rules").mkdir(parents=True)
         (self.home / ".codex" / "rules" / "brain-starter.rules").write_text("rules")
-        (self.home / "Applications" / "T3 Code (Alpha).app").mkdir(parents=True)
+        (self.home / "Applications" / "T3 Code (Beta).app").mkdir(parents=True)
         self.runner = healthy_runner()
 
     def trust(self, accepted):
@@ -83,6 +83,7 @@ class Mac:
 @pytest.fixture
 def mac(tmp_path, at, monkeypatch):
     monkeypatch.setattr(doctor, "disk_usage", lambda path: Usage(500 * GB, 400 * GB, 100 * GB))
+    monkeypatch.setattr(mac_apps, "SYSTEM_APPS", tmp_path / "Applications")  # not this machine's
     monkeypatch.setattr(keychain.getpass, "getuser", lambda: "someone")
     monkeypatch.setitem(sys.modules, "brainkit.slack_api", None)  # no Slack network check by default
     return Mac(tmp_path, at)
@@ -178,7 +179,7 @@ def test_claude_logged_out_fails_with_terminal_fix(mac):
     override(mac.runner, "claude", "auth", "status", result=Result(1, '{"loggedIn": false}'))
     check = mac.by_name()["claude login"]
     assert check.status == "fail"
-    assert check.fix == ("open Terminal, run `cd ~/brain && claude`, log in with your work account, "
+    assert check.fix == ("open Terminal, run `cd ~/brain && claude`, log in with your Claude account, "
                          "then type /exit")
 
 
@@ -249,7 +250,6 @@ def test_codex_login_output_is_never_shown(mac):
 
 
 @pytest.mark.parametrize("change, message_part", [
-    ({"has_refresh_token": False}, "isn't connected"),
     ({"token_valid": False}, "expired"),
     ({"scopes": [SCOPE + "gmail.readonly", SCOPE + "gmail.compose", SCOPE + "calendar.readonly"]}, "drive.readonly"),
     ({"scopes": []}, "gmail.readonly, gmail.compose, calendar.readonly, drive.readonly"),
@@ -272,21 +272,37 @@ def test_google_broader_scopes_are_enough(mac):
     assert mac.by_name()["google"].status == "ok"
 
 
-def test_google_tool_missing_or_unreadable(mac):
-    override(mac.runner, "gws", "auth", "status", result=Result(1, "not json"))
-    assert mac.by_name()["google"].message == "couldn't read the Google connection status"
-    override(mac.runner, "gws", result=Result(127))
+def test_google_never_connected_is_info(mac):
+    override(mac.runner, "gws", "auth", "status",
+             result=Result(1, json.dumps(dict(GOOD_GWS, has_refresh_token=False, token_valid=False))))
     check = mac.by_name()["google"]
-    assert check.status == "fail" and check.fix == "run `brain tools install`"
+    assert (check.status, check.message) == ("info", "Google isn't connected (optional)")
+    assert check.fix == 'to add it, say "connect Google" in a chat'
+
+
+def test_google_tool_missing_is_info_and_unreadable_warns(mac):
+    override(mac.runner, "gws", "auth", "status", result=Result(1, "not json"))
+    check = mac.by_name()["google"]
+    assert (check.status, check.message) == ("warn", "couldn't read the Google connection status")
+    override(mac.runner, "gws", result=Result(4, "", "the real gws is missing"))  # the kit's shim
+    check = mac.by_name()["google"]
+    assert (check.status, check.message) == ("info", "Google isn't connected (optional)")
+    assert check.fix == 'to add it, say "connect Google" in a chat'
 
 
 # ---------------------------------------------------------------- Slack
 
 
-def test_slack_missing_warns(mac):
+def test_slack_never_connected_is_info(mac):
     override(mac.runner, "security", result=Result(44))
     check = mac.by_name()["slack"]
-    assert check.status == "warn" and check.fix == "run `brain secret set slack --gui`"
+    assert (check.status, check.message) == ("info", "Slack isn't connected (optional)")
+    assert check.fix == 'to add it, say "connect Slack" in a chat'
+
+
+def test_slack_keychain_trouble_still_warns(mac):
+    override(mac.runner, "security", result=Result(51, "", "User interaction is not allowed."))
+    assert mac.by_name()["slack"].status == "warn"
 
 
 def test_slack_auth_test_reports_ids_only(mac, monkeypatch):
@@ -321,10 +337,15 @@ def test_quick_skips_slack_network_and_last_catchup(mac, monkeypatch):
 # ---------------------------------------------------------------- schedule and machine
 
 
-def test_schedule_not_loaded_warns(mac):
+def test_schedule_not_set_up_is_info_and_no_catchup_complaint(mac):
     override(mac.runner, "launchctl", "print", result=Result(113, "", "Could not find service"))
-    check = mac.by_name()["schedule"]
-    assert check.status == "warn" and check.fix == "run `brain schedule install`"
+    mac.ws.runs_file.unlink()  # and no catch-up has ever run
+    found = mac.by_name()
+    check = found["schedule"]
+    assert (check.status, check.message) == ("info", "the daily schedule isn't set up (optional)")
+    assert check.fix == 'to get a morning brief, say "turn on my morning brief" in a chat'
+    assert "last catch-up" not in found
+    assert len([argv for argv in mac.runner.argvs() if argv[:2] == ["launchctl", "print"]]) == 1
 
 
 def test_schedule_failed_last_run_warns(mac):
@@ -364,12 +385,38 @@ def test_mdm_enrolled_is_info_only(mac):
     assert check.status == "info" and check.message == "MDM enrollment: Yes (User Approved)"
 
 
-def test_t3_app(mac):
-    assert doctor.T3_APP_PATHS == ["/Applications/T3 Code (Alpha).app", "~/Applications/T3 Code (Alpha).app"]
+@pytest.mark.parametrize("name", ["T3 Code (Alpha).app", "T3 Code (Beta).app", "T3 Code.app",
+                                  "T3 Code (Preview).app"])
+def test_t3_app_is_found_under_any_t3_code_name(mac, tmp_path, name):
+    (mac.home / "Applications" / "T3 Code (Beta).app").rmdir()
+    assert mac.by_name()["t3 app"].status == "info"
+    (tmp_path / "Applications" / name).mkdir(parents=True)  # /Applications
     assert mac.by_name()["t3 app"].status == "ok"
-    (mac.home / "Applications" / "T3 Code (Alpha).app").rmdir()
-    if not os.path.exists("/Applications/T3 Code (Alpha).app"):
-        assert mac.by_name()["t3 app"].status == "info"
+
+
+def test_t3_app_missing_is_info(mac):
+    (mac.home / "Applications" / "T3 Code (Beta).app").rmdir()
+    (mac.home / "Applications" / "T3 Chat.app").mkdir()
+    check = mac.by_name()["t3 app"]
+    assert check.status == "info" and check.fix == "run `brain tools install t3`"
+
+
+def test_memory_only_mac_passes(cli_mac, capsys):
+    """A fresh install: Claude Code and T3 Code only, nothing connected, no schedule, no runs."""
+    mac = cli_mac
+    for prefix in (("gws",), ("codex",)):
+        override(mac.runner, *prefix, result=Result(127, "", "command not found"))
+    override(mac.runner, "security", result=Result(44))
+    override(mac.runner, "launchctl", "print", result=Result(113, "", "Could not find service"))
+    mac.ws.runs_file.unlink()
+    (mac.home / ".codex" / "rules" / "brain-starter.rules").unlink()
+    assert cli.main(["--workspace", str(mac.ws.root), "doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "✗" not in out and "\n!" not in "\n" + out, out
+    for line in ("· google: Google isn't connected (optional)", "· slack: Slack isn't connected (optional)",
+                 "· schedule: the daily schedule isn't set up (optional)", "✓ t3 app: T3 Code is installed"):
+        assert line in out
+    assert "last catch-up" not in out
 
 
 # ---------------------------------------------------------------- kit, folders, settings

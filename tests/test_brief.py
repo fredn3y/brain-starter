@@ -477,7 +477,7 @@ def test_skills_use_detach_and_the_mail_estimate_rule(repo):
     text = (skills / "morning-brief" / "SKILL.md").read_text()
     assert "mail.estimated_total" in text and "Showing the newest N of about M emails" in text
     for name in ("morning-brief", "onboard", "troubleshoot"):
-        text = (skills / name / "SKILL.md").read_text()
+        text = "\n".join(p.read_text() for p in sorted((skills / name).glob("*.md")))
         assert "brain brief --detach" in text and "catchup --job brief" not in text
 
 

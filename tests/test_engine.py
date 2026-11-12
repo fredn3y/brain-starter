@@ -81,6 +81,7 @@ def test_token_is_added_only_when_the_secret_exists(ws, at, claude):
     engine.run_skill(make_ctx(ws, runner, at, claude, CLAUDECODE="1"), "morning-brief", "x", engine.DEFAULT_TOOLS)
     env = runner.calls[-1]["env"]
     assert "CLAUDE_CODE_OAUTH_TOKEN" not in env and "CLAUDECODE" not in env
+    assert env["BRAIN_ENGINE_RUN"] == "1"  # keeps the session-start hook quiet in scheduled runs
     assert env["USER"] == "tester" and env["HOME"].endswith("home") and env["PATH"] == str(claude.parent)
 
     runner = FakeRunner().on("security", "find-generic-password", "-s", "brain.claude-oauth-token",

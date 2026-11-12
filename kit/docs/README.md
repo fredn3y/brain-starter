@@ -1,37 +1,41 @@
 # Your brain: the one-page guide
 
-This folder is your work brain. It keeps your notes, tasks and daily briefs, and it gives your AI
-assistant (Claude or Codex) the rules and know-how to help you. It lives on your Mac, in your home
-folder, as `brain`.
+This folder is your assistant's memory. It keeps who you are, your goals, the people you work
+with, how you write and your tasks, so every chat starts from what it already knows about you. It
+lives on your Mac, in your home folder, as `brain`.
 
-## Your morning brief
+## What it remembers
 
-- On workdays at your brief time, your brain writes a short brief: today's meetings, the mail and
-  Slack messages waiting on you, tasks that are due, and a few suggestions.
-- If your Mac was asleep or closed at that time, the brief arrives soon after you open it. After a
-  long weekend you get one brief that covers the whole gap.
-- You get a notification, a draft email to yourself in Gmail (look in Drafts), and the file in
-  `briefs/`.
-- Anything broken, and any update, is always at the top.
+- `me.md`: who you are, your hours, and how you like to be told things.
+- `strategy.md`: your goals, what you're focused on and what to ignore.
+- `people.md`: the people you work with.
+- `voice.md`: how you write, so drafts sound like you.
+- `tasks/`: one file for each piece of work, with the next step and a dated log.
+
+Tell your assistant when something changes ("the launch has moved to May", "I have a new
+manager") and it updates the right file. You can also open the files and edit them yourself.
 
 ## Asking things
 
-- Open T3 Code, choose your brain project and start a new thread with Claude or Codex.
-- Ask in plain words: "What needs me today?", "Draft a reply to the supplier", "Where are we with
-  the office move?", "Set up Slack again".
+- Open T3 Code, choose your brain project and start a new thread with Claude.
+- Ask in plain words: "What should I focus on today?", "Draft a reply to this" (paste the
+  message in), "Where are we with the website?", "Add a task: renew the insurance by Friday".
+- To share a file, drop it in the `inbox` folder and say so.
 - If you like, type `$` to pick a skill by name. You don't have to.
 
 ## What it can and can't do
 
-It can:
-- read your Gmail, Google Calendar, Google Drive and Slack;
-- keep your tasks and notes up to date;
-- write drafts: emails go to your Gmail Drafts, Slack replies appear in the chat for you to paste.
+It can keep your notes and tasks up to date, help you think things through, and write drafts for
+you to send.
 
 It can't:
-- send email or post to Slack: you always press Send;
-- delete, archive or change your mail, files or calendar;
+- send email or post messages: you always press Send;
+- delete or change your mail, files or calendar;
 - see your passwords: you type them into a private Mac box, never into the chat.
+
+Your chats go to Anthropic (for Claude) to be answered. On a personal Claude plan, Anthropic may
+use them to improve its models if "Help improve our AI models" is on in your Claude privacy
+settings at claude.ai. You can turn it off there.
 
 ## Your files and the kit's files
 
@@ -47,14 +51,27 @@ It can't:
 
 - In a brain chat, say "something's wrong". Your assistant runs a check and explains it plainly.
 - In Terminal you can run the same check yourself: `brain doctor`.
-- To get help from your consultant, run `brain report` (or ask your assistant to). It makes a file
-  and shows it in Finder: email that file to your consultant. It holds settings, check results and
-  recent logs with emails and keys blanked out. Your mail, tasks, briefs and notes aren't in it.
+- To get help from the person who set this up, run `brain report` (or ask your assistant to). It
+  makes a file and shows it in Finder: email that file to them. It holds settings, check results
+  and recent logs with emails and keys blanked out. Your mail, tasks and notes aren't in it.
 - If Claude says your login has expired: open Terminal, type `claude`, log in, then type `/exit`.
 
 ## Updates
 
-- When there's a new version, your brief says so at the top.
-- In a brain chat, say "update". Your brain saves a snapshot first and undoes the update by itself
-  if anything goes wrong.
+- When there's a new version, your assistant tells you at the start of a Claude chat. Say yes and
+  it installs it.
+- It saves a snapshot first and undoes the update by itself if anything goes wrong.
 - Changed your mind later? Say "undo the update".
+
+## Extras you can add
+
+Ask in a brain chat when you want one:
+
+- **"Connect Google"**: your assistant can read your Gmail, Calendar and Drive, and save email
+  drafts in Gmail. It needs a company Google account and its Google Workspace admin; a personal
+  Gmail can't be connected.
+- **"Connect Slack"**: it can read and search your Slack. You need to be allowed to install an
+  app there, or have an admin approve it.
+- **"Turn on my morning brief"**: on workdays, a short brief of your meetings, the mail and
+  messages waiting on you, and your tasks. It comes as a notification and a draft in your Gmail,
+  or soon after you open your Mac if it was asleep. It needs Google first.

@@ -10,7 +10,9 @@ import pytest
 from brainkit import snapshot as snapshot_mod
 from brainkit.cli import main as cli_main
 from brainkit.config import Config
-from brainkit.install import BLOCK_BEGIN, BLOCK_END, ensure_path_block, path_block, run_install
+from brainkit.cli import build_parser
+from brainkit.install import (BLOCK_BEGIN, BLOCK_END, EX_TOOLS, ensure_path_block, path_block,
+                              run_install, split_names)
 from brainkit.lock import try_lock
 from brainkit.paths import Workspace
 from brainkit.runner import FakeRunner, Result
@@ -21,14 +23,24 @@ FILES = {"AGENTS.md": "rules\n", ".claude/skills/brief/SKILL.md": "brief\n",
          ".kit/codex/brain-starter.rules": "rules for codex\n"}
 TEMPLATES = {"me.md": "# Me\n", ".kit/config.json": "{}\n", "tasks/active/.keep": ""}
 TOOLS = {"tools": [
-    {"name": "gws", "required": True, "check": ["gws", "--version"],
+    {"name": "claude", "required": True, "default": True, "check": ["claude", "--version"],
+     "install": {"type": "script", "url": "https://claude.ai/install.sh", "shell": "bash"}},
+    {"name": "helper", "required": False, "check": ["helper", "--version"],
+     "install": {"type": "manual", "instructions": "Install helper from its website."}},
+    {"name": "gws", "required": False, "default": False, "check": ["gws", "--version"],
      "install": {"type": "archive-binary", "version": "0.0.1", "binary": "gws",
                  "dest": "~/.local/bin/gws",
                  "assets": {"arm64": {"url": "TODO", "sha256": "TODO"},
                             "x86_64": {"url": "TODO", "sha256": "TODO"}}}},
-    {"name": "helper", "required": False, "check": ["helper", "--version"],
-     "install": {"type": "manual", "instructions": "Install helper from its website."}},
+    {"name": "codex", "required": False, "default": False, "check": ["codex", "--version"],
+     "install": {"type": "manual", "instructions": "Install Codex from its website."}},
 ]}
+
+
+def claude_present(fake=None):
+    fake = fake or FakeRunner()
+    return fake.on("uname", "-m", result=Result(0, "arm64\n")).on(
+        "claude", "--version", result=Result(0, "2.1.0 (Claude Code)\n"))
 
 
 @pytest.fixture(autouse=True)
@@ -71,8 +83,10 @@ def test_fresh_install(release, home):
     assert profile == (f'{BLOCK_BEGIN}\nexport PATH="$HOME/brain/.kit/bin:$HOME/.local/bin:$PATH"\n'
                        f"{BLOCK_END}\n")
     assert (home / ".codex" / "rules" / "brain-starter.rules").read_text() == "rules for codex\n"
-    for words in ("new Terminal window", "claude", "codex login", "T3 Code", "set me up", "~/brain"):
+    for words in ("new Terminal window", "the `brain` and `claude` commands", "Claude account",
+                  "cd ~/brain && claude", "T3 Code", "set me up", "~/brain", "Your brain is ready"):
         assert words in text
+    assert "work account" not in text and "codex" not in text.lower()
 
 
 def test_rerunning_install_is_safe(release, home):
@@ -195,13 +209,50 @@ def test_no_path_leaves_zprofile_alone(release, home):
     assert not (home / ".zprofile").exists()
 
 
-def test_tool_problems_are_reported_not_fatal(release, home):
-    fake = FakeRunner().on("uname", "-m", result=Result(0, "arm64\n"))
+def test_fresh_install_gets_only_the_standard_tools(release, home):
+    fake = claude_present()
     code, text = install(release, Workspace(home / "brain"), home, runner=fake, no_tools=False)
     assert code == 0, text
+    assert "claude: already installed (2.1.0 (Claude Code))" in text
+    assert "helper: to do by hand (Install helper from its website.)" in text  # no "default": standard
+    assert "gws" not in text and "codex" not in text.lower()  # add-ons wait until asked for
+    assert not any(call["argv"][0] in ("curl", "gws", "codex") for call in fake.calls)
+
+
+def test_add_on_problems_are_reported_not_fatal(release, home):
+    fake = claude_present()
+    code, text = install(release, Workspace(home / "brain"), home, runner=fake, no_tools=False,
+                         extra_tools=["gws,codex", "nope"])
+    assert code == 0, text
     assert "gws: not ready yet" in text and "Ask your consultant" in text
-    assert "helper: to do by hand (Install helper from its website.)" in text
+    assert "codex: to do by hand (Install Codex from its website.)" in text
+    assert "Not a tool the brain knows, so skipped: nope" in text
+    assert "Something above didn't install" in text and "Your brain is ready" in text
+    assert "codex login" in text  # the Codex step only shows when Codex was asked for
     assert not any(call["argv"][0] == "curl" for call in fake.calls)
+
+
+def test_claude_failing_to_install_is_said_plainly(release, home):
+    fake = FakeRunner().on("bash", "-c", result=Result(1, "", "curl: (6) Could not resolve host"))
+    ws = Workspace(home / "brain")
+    code, text = install(release, ws, home, runner=fake, no_tools=False)
+    assert code == EX_TOOLS == 3
+    assert "claude: FAILED" in text and "Could not resolve host" in text
+    assert "Claude Code didn't install, so your brain can't be used yet." in text
+    assert "running the install again is safe" in text
+    assert "is ready" not in text and "Next steps" not in text
+    assert ws.manifest.is_file() and (home / ".local" / "bin" / "brain").is_symlink()
+    fake.on("claude", "--version", result=Result(0, "2.1.0\n"))  # the second try works
+    code, text = install(release, ws, home, runner=fake, no_tools=False)
+    assert code == 0 and "Your brain is ready" in text
+
+
+def test_with_option_and_name_splitting():
+    args = build_parser().parse_args(["install", "--release-dir", "x", "--with", "gws,codex",
+                                      "--with", "codex t3"])
+    assert args.extra_tools == ["gws,codex", "codex t3"]
+    assert split_names(args.extra_tools) == ["gws", "codex", "t3"]
+    assert build_parser().parse_args(["install", "--release-dir", "x"]).extra_tools == []
 
 
 def test_cli_install(release, home, tmp_path):

@@ -31,6 +31,7 @@ AUTH_SIGNS = ("failed to authenticate", "not logged in", "login expired", "pleas
               "authentication_failed", "invalid api key", "oauth token has expired")
 # Set inside a Claude Code session; a run started from chat must not look nested.
 DROP_ENV = ("CLAUDECODE",)
+ENGINE_RUN_ENV = "BRAIN_ENGINE_RUN"  # set for every headless run; read by session_start.py
 ENGINE_LOG_DAYS = 30
 
 
@@ -66,6 +67,7 @@ def engine_env(ctx: JobContext) -> Dict[str, str]:
     env = dict(ctx.env) if ctx.env else dict(os.environ)
     for key in DROP_ENV:
         env.pop(key, None)
+    env[ENGINE_RUN_ENV] = "1"  # the session-start hook stays quiet in scheduled runs
     token = _oauth_token(ctx)
     if token:
         env["CLAUDE_CODE_OAUTH_TOKEN"] = token

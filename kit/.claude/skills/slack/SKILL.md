@@ -5,6 +5,10 @@ description: Use when the user asks what's happening in Slack, what needs them t
 
 # Slack
 
+Needs Slack. If you don't know it's connected, run `brain slack whoami`. Not connected: tell the
+user in one line and offer to connect it (`onboard` skill, `slack` part). Meanwhile, work from
+messages they paste into the chat.
+
 Read only. The brain can't post to Slack: show replies in chat; the user pastes and sends them.
 
 ## Commands
@@ -16,7 +20,7 @@ Read only. The brain can't post to Slack: show replies in chat; the user pastes 
 | search | `brain slack search "QUERY" --count 20` |
 | a whole thread | `brain slack thread CHANNEL TS` (both come from recent or search results) |
 | channels the user is in | `brain slack channels` |
-| fetch the latest now | `brain slack sync` (the schedule does it hourly in work hours) |
+| fetch the latest now | `brain slack sync` (hourly in work hours once the morning brief is on) |
 | go further back | `brain slack sync --lookback-days 14` |
 | check the connection | `brain slack whoami` |
 

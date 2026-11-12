@@ -3,6 +3,7 @@
     {
       "name": "claude",
       "required": true,
+      "default": true,
       "check": ["claude", "--version"],
       "install": {
         "type": "script",
@@ -12,8 +13,21 @@
       }
     },
     {
+      "name": "t3",
+      "required": false,
+      "default": true,
+      "check": [],
+      "install": {
+        "type": "mac-app-feed",
+        "feed": "https://github.com/pingdotgg/t3code/releases/latest/download/latest-mac.yml",
+        "zip_suffix": {"arm64": "-arm64.zip", "x86_64": "-x64.zip"},
+        "app_glob": "T3 Code*.app"
+      }
+    },
+    {
       "name": "gws",
-      "required": true,
+      "required": false,
+      "default": false,
       "check": ["gws", "--version"],
       "install": {
         "type": "archive-binary",
@@ -35,31 +49,12 @@
     {
       "name": "codex",
       "required": false,
+      "default": false,
       "check": ["codex", "--version"],
       "install": {
         "type": "script",
         "url": "https://chatgpt.com/codex/install.sh",
         "shell": "sh"
-      }
-    },
-    {
-      "name": "t3",
-      "required": false,
-      "check": [],
-      "install": {
-        "type": "mac-app-zip",
-        "version": "0.0.45",
-        "assets": {
-          "arm64": {
-            "url": "https://github.com/pingdotgg/t3code/releases/download/v0.0.45/T3-Code-0.0.45-arm64.zip",
-            "sha512": "91dca5d86bcbd98457e274326e4bfbc9057f8e9077a0707b58b662928b45a1388e7b931e60a9512261667cf7d04ba7fcbbca63b6c98ad26c066ac8e2ccc99aab"
-          },
-          "x86_64": {
-            "url": "https://github.com/pingdotgg/t3code/releases/download/v0.0.45/T3-Code-0.0.45-x64.zip",
-            "sha512": "d2ff1d2498e4cadb10e348b3d6381452f643873a0a0e37677fa41cfbf39c09d890e5a6c0c22b22257e98fd713b2d39dafb3857216f2b1d22985c46972b9a6150"
-          }
-        },
-        "app": "T3 Code (Alpha).app"
       }
     }
   ]

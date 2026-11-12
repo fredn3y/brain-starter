@@ -4,9 +4,14 @@
 #   curl -fsSL https://github.com/fredn3y/brain-starter/releases/latest/download/install.sh | bash
 #
 # Safe to run again: your own files are never overwritten.
+# It installs Claude Code, T3 Code and the brain folder. Google (gws), Codex, Slack and the daily
+# schedule are add-ons, turned on later by asking in a chat.
 # For the consultant: BRAIN_HOME, BRAIN_KIT_VERSION (e.g. v0.2.0), BRAIN_KIT_REPO,
 # BRAIN_KIT_TARBALL + BRAIN_KIT_SUMS (local path or URL), BRAIN_SKIP_TOOLS=1,
-# BRAIN_ALLOW_NON_MAC=1, BRAIN_PYTHON.
+# BRAIN_ALLOW_NON_MAC=1, BRAIN_PYTHON, and BRAIN_EXTRA_TOOLS to add tools in the same run
+# (names from tools.json, comma or space separated), for the full setup:
+#
+#   curl -fsSL https://github.com/fredn3y/brain-starter/releases/latest/download/install.sh | BRAIN_EXTRA_TOOLS=gws,codex bash
 #
 # Written for macOS /bin/bash 3.2. It arrives through a pipe, so it never reads from stdin, and
 # everything runs from main() at the very end: a cut-off download runs nothing.
@@ -166,12 +171,18 @@ run_brain_install() {
   if [ "${BRAIN_SKIP_TOOLS:-0}" = "1" ]; then
     set -- "$@" --no-tools
   fi
+  if [ -n "${BRAIN_EXTRA_TOOLS:-}" ]; then
+    set -- "$@" --with "$BRAIN_EXTRA_TOOLS"
+  fi
   step "Setting up your brain"
   "$PY" "$REL/kit/.kit/bin/brain" "$@" </dev/null
   status=$?
   if [ "$status" -eq 75 ]; then  # busy with a scheduled task: nothing changed, just retry
     say "Your brain is busy with a scheduled task. Paste the same install line again in a few minutes."
     exit 1
+  fi
+  if [ "$status" -eq 3 ]; then  # the brain folder is in place, but Claude Code didn't install
+    fail "Claude Code didn't install (see the messages above). Your brain folder is in place. Check the internet connection, then paste the same install line again: it is safe to re-run."
   fi
   if [ "$status" -ne 0 ]; then
     fail "the setup step didn't finish (see the messages above)."

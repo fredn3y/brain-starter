@@ -70,7 +70,7 @@ def request(
     try:
         result = runner.run(["curl", "--config", "-", "--dump-header", header_path,
                              "--write-out", "\n%{http_code}"],
-                            input="\n".join(lines) + "\n", timeout=timeout + 15)
+                            input="\n".join(lines) + "\n", timeout=timeout + min(15, timeout))
         if not result.ok:
             raise HttpError(f"curl failed ({result.returncode}): {result.stderr.strip()[:200]}")
         body, _, code = result.stdout.rpartition("\n")
