@@ -90,6 +90,7 @@ Details and limits: [docs/security.md](docs/security.md).
 
 ```bash
 pytest                          # runs on Linux; macOS commands are faked through a Runner
+uv run --no-project --python 3.9 --with pytest python -m pytest   # the same tests on Python 3.9, the one a Mac has built in
 python3 tools/build_release.py  # dist/brain-starter-vX.Y.Z.tar.gz plus SHA256SUMS
 ```
 

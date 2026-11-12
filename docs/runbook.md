@@ -72,7 +72,7 @@ Mac; it says when an update is out.
 2. Read `summary.txt`, `doctor.json`, `runs.jsonl` and the log tails. Reproduce the problem here.
 3. Fix it with a regression test that fails before the fix.
 4. Bump `kit/.kit/VERSION` (patch for fixes, minor for features).
-5. `pytest`
+5. `pytest`, then the same tests on Python 3.9 (the command is in the README under Development).
 6. `python3 tools/build_release.py`
 7. `gh release create vX.Y.Z dist/* --title "vX.Y.Z" --notes "<first line for the user>"`. Write
    the first line of the notes for the user: plain English, under 80 characters. The assistant
