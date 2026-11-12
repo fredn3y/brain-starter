@@ -10,7 +10,7 @@ above tasks: it says what matters and what to ignore, not every piece of work.
 
 ## Start
 
-1. Read `strategy.md`, `me.md`, and the title, priority and `## Next` lines of every
+1. Read `strategy.md`, `me.md`, and the title, priority and open threads of every
    `tasks/active/*.md`.
 2. If `strategy.md` still has `{{` placeholders or no real content: run the first-time interview.
    Otherwise: run a review.
@@ -36,12 +36,12 @@ Then fill `strategy.md` from its headings, replacing every `{{placeholder}}` and
    - a focus area with no active task;
    - P1 or P2 tasks that serve no focus area;
    - too many fronts at once (more than three P1s, or more than five focus areas);
-   - focus tasks with no Log entry for 14 days or more.
+   - focus tasks with no Activity entry for 14 days or more.
 3. Tell the user what you see in at most five bullets, plainly and kindly, for example: "Hiring is
    your top goal, but nothing on your list moves it this week."
 4. Propose edits: show the strategy lines you'd change (before and after) and any task changes
    (priority, move to later, close, new task). Save only what they approve. Make task changes with
-   the `task-files` skill, each with a Log line.
+   the `task-files` skill, each with an Activity entry.
 5. Set "Last reviewed" in `strategy.md` to today.
 
 ## Rules

@@ -66,8 +66,10 @@ Since Thu 17:40
   request, a decision, a deadline. Judge importance with `people.md` (who matters) and
   `strategy.md` (what matters). Skip newsletters, notifications and anything the user has already
   answered. Each line: **who**, what they need, why it matters, and a link.
-- **Tasks** (max 5): due or overdue first, then stalled ones (an open `[me]` or `[waiting]` line
-  and no Log entry for 7 days), then the next `[me]` steps.
+- **Tasks** (max 5): due or overdue first, then open `[human]` cards with their suggested answer,
+  then `[external]` waits whose `Follow-Up` date has come, as a question ("still waiting on the
+  printer?"), then stalled tasks (no Activity entry for 7 days). Leave out cards whose
+  `Snooze-Until` date is still ahead. Plain words: no tags or field names in the brief.
 - **Suggestions** (max 3): things you could draft or do next. The user answers in a brain chat.
 - **FYI** (optional, max 5, one line each).
 

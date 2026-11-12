@@ -34,11 +34,15 @@ Show the whole draft in chat, send-ready:
 Add one line under it only if there's something the user should check ("I guessed the date: is
 Friday right?"). If they ask for changes, show the whole new version again.
 
+If they don't decide in this chat, put it on the related task as an approval card with the draft
+(`task-files` skill), so it isn't lost. Show the full draft again before taking a yes later.
+
 ## After the user's OK
 
 - Email: if Google is connected, save it with the `mail` skill (`brain draft email`); it lands in
   their Gmail Drafts. If not, they copy it from the chat.
 - Slack: they copy the text and send it.
-- If it makes a promise or changes the state of a task, add a Log line there (`task-files` skill).
+- If it makes a promise or changes the state of a task, write that to the task file: an Activity
+  entry, and a wait with a follow-up date if a reply is due (`task-files` skill).
 
 The user always sends. Never claim something was sent.

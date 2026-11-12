@@ -76,15 +76,19 @@ valid. If the morning brief is on, run `brain schedule install` again so it uses
 ## tasks (5 min)
 
 1. Ask: "What's on your plate? Anything you're working on, waiting for, or have promised someone."
-2. Turn it into tasks, one line each: title, outcome, next step and who owns it. One outcome per
-   task. The user keeps, changes or drops each.
-3. Create the kept ones from `tasks/TEMPLATE.md` (`task-files` skill), "From setup" in the Log.
+2. Turn it into tasks, one plain line each: the outcome, the next step and who has it. One outcome
+   per task. The user keeps, changes or drops each.
+3. Create the kept ones with the `task-files` skill, "From setup" in the first Activity entry.
+   Anything they must decide or do becomes a card with context and a suggested answer; anything
+   they're waiting for gets a follow-up date.
+4. Answer "what needs me today?" from the new files, so they see what that question gives them.
 
 ## wrap (2 min)
 
 Five lines, no more:
 - I now know who you are, what matters and who you work with. Tell me when something changes.
-- To ask anything: T3 Code, your brain project, a new Claude thread. Plain words.
+- To ask anything: T3 Code, your brain project, a new Claude thread. Plain words. Try "what needs
+  me today?".
 - I draft; you always send.
 - Something wrong? Say so, or run `brain doctor`. `brain report` makes a file for whoever helps you.
 - I'll tell you at the start of a chat when there's an update. Later I can also connect Google or

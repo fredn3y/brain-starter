@@ -56,13 +56,18 @@ def test_runtime_annotations_safe(tmp_path):
 FORBIDDEN_HASHES = {
     "0739ecedc8a3e06a",
     "294aa8d75483b833",
+    "2d8d3f3a0f06b516",
     "3bf8fd1a8fc44d4a",
+    "648ce05a806ea165",
     "6827ed4185621fca",
+    "720ae25dcde37ed8",
     "7282f5e17dc8425d",
     "9054966f3df0a88c",
     "9b7a0f2e159a5d55",
     "a5ca3725d59b501f",
     "ab1cb712f2dca756",
+    "ac9071cf9ea41bfb",
+    "adb1b615b6e92302",
     "c0fc092abf25c405",
     "c18d0f640b1ced02",
     "c5e09d80d3e0cb5d",
@@ -93,16 +98,46 @@ def _hash(word: str) -> str:
     return hashlib.sha256(word.encode("utf-8")).hexdigest()[:16]
 
 
+def forbidden_lines(text: str, hashes=FORBIDDEN_HASHES):
+    """Line numbers holding a forbidden word. Matching ignores case; a word counts on its own, as
+    a piece of a hyphenated word (`name-shop`), inside an address (`x.name.com`) and as a pair of
+    neighbouring words (for two-word names)."""
+    for allowed in ALLOWED:
+        text = text.replace(allowed, "")
+    hits = []
+    for number, line in enumerate(text.splitlines(), 1):
+        words = re.findall(r"[a-z0-9][a-z0-9-]*", line.lower())
+        candidates = set(words) | {f"{a} {b}" for a, b in zip(words, words[1:])}
+        candidates |= {part for word in words for part in word.split("-") if part}
+        if any(_hash(word) in hashes for word in candidates):
+            hits.append(number)
+    return hits
+
+
 def test_no_personal_or_client_strings():
     problems = []
     for path in shipped_files():
         text = path.read_text(encoding="utf-8", errors="replace")
-        for allowed in ALLOWED:
-            text = text.replace(allowed, "")
-        for number, line in enumerate(text.splitlines(), 1):
-            words = re.findall(r"[a-z0-9][a-z0-9-]*", line.lower())
-            candidates = set(words) | {f"{a} {b}" for a, b in zip(words, words[1:])}
-            for word in candidates:
-                if _hash(word) in FORBIDDEN_HASHES:
-                    problems.append(f"{path.relative_to(REPO)}:{number}: forbidden word")
+        for number in forbidden_lines(text):
+            problems.append(f"{path.relative_to(REPO)}:{number}: forbidden word")
     assert not problems, "personal/client strings in shipped files:\n" + "\n".join(sorted(set(problems)))
+
+
+def test_the_guard_catches_a_planted_word_in_every_form():
+    # An invented word stands in for a real one, so this public test names nobody.
+    hashes = {_hash("zorvane"), _hash("quill-ten-07"), _hash("ada brook")}
+    caught = ["Zorvane said yes", "ZORVANE's shop", "see zorvane-studio", "mail me@zorvane.co.uk",
+              "(zorvane)", "zorvane_notes", "host quill-ten-07.example.net", "ask Ada Brook today",
+              "https://example.com/zorvane/plan"]
+    for line in caught:
+        assert forbidden_lines(line, hashes) == [1], line
+    for line in ["zorvanes", "azorvane", "quill-ten", "Ada Brookes", "a brook"]:
+        assert forbidden_lines(line, hashes) == [], line
+    assert forbidden_lines("one\ntwo zorvane\n", hashes) == [2]
+
+
+def test_the_allowed_repo_slug_passes_but_its_owner_word_alone_does_not():
+    owner, _, repo = ALLOWED[0].partition("/")
+    hashes = {_hash(owner)}
+    assert forbidden_lines(f"https://github.com/{ALLOWED[0]}/releases", hashes) == []
+    assert forbidden_lines(f"written by {owner}", hashes) == [1]

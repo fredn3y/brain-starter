@@ -5,6 +5,10 @@ chat app, Claude Code (which T3 Code needs and doesn't bundle) and a `~/brain` f
 assistant keeps who you are, your goals, the people you work with, how you write and your tasks.
 Setup is a 30-minute chat: you type "set me up" and it interviews you.
 
+Each piece of work is one task file: the outcome, settled facts, who moves each open thread, and a
+dated history. Anything the user must decide is written there as a card with a suggested answer,
+and "what needs me?" lists them. The format: [docs/task-format.md](docs/task-format.md).
+
 **Status:** v0.2.0 has had one test on a real Mac (macOS 26, Apple silicon), on a machine that
 already had Claude Code and T3 Code. Fresh downloads of those two, the update notice and the
 add-ons are not yet tested on a real Mac.
@@ -90,6 +94,7 @@ python3 tools/build_release.py  # dist/brain-starter-vX.Y.Z.tar.gz plus SHA256SU
 ```
 
 - Build contract: [docs/architecture.md](docs/architecture.md)
+- Task file format: [docs/task-format.md](docs/task-format.md)
 - Setup runbook: [docs/runbook.md](docs/runbook.md)
 - Mac dry run before a real session: [docs/dry-run-checklist.md](docs/dry-run-checklist.md)
 - Facts the build relies on: [docs/sources.md](docs/sources.md)

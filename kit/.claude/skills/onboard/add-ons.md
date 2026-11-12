@@ -81,5 +81,5 @@ what isn't already in the files, and save after the user's OK.
    user's sent mail for promises (`--query "in:sent newer_than:14d"`) and Slack
    (`brain slack recent --hours 336 --mentions --json`, then the same with `--dms`).
 3. Propose 5-10 tasks, one line each: title, outcome, next step and owner, source. The user keeps
-   or drops each. Create the kept ones from `tasks/TEMPLATE.md` (`task-files` skill), the source
-   in the Log.
+   or drops each. Create the kept ones with the `task-files` skill, the source in the first
+   Activity entry and on any card.

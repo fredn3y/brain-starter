@@ -49,7 +49,7 @@ that let Codex see the skills; the kit rebuilds them on every update.
 - `morning-brief`: writes the daily brief (an add-on: needs Google and the schedule).
 - `weekly-review`: look back at last week and plan this one (on request, or Mondays on the schedule).
 - `coach`: keep `strategy.md` current and check tasks against it.
-- `task-files`: create, update, close and archive task files.
+- `task-files`: create, update, close, pause and reopen task files; answer "what needs me?".
 - `mail`: search and read Gmail; save drafts (needs Google).
 - `calendar-drive`: agenda and free time; find and read Drive files (needs Google).
 - `slack`: read and search Slack; draft replies for the user to paste (needs Slack).
@@ -87,16 +87,22 @@ and a one-line `description:`. Codex sees a new one after the next update, or st
 
 ## Task files
 
-- One file per outcome, in `tasks/active/<short-name>.md`. The format is in `tasks/TEMPLATE.md`.
-- Lines under `## Next` are tagged `[ai]`, `[me]` or `[waiting]`.
-- `## Log` is append-only: add a dated line at the top; never edit or delete old lines.
-- Done: add a Log line and move the file to `tasks/archive/`. Paused: move it to `tasks/later/`.
+- One file per outcome, and the file is the state of that work. The folder says live, paused or
+  done: `tasks/active/`, `tasks/later/`, `tasks/archive/`. The `task-files` skill has the format.
+- Anything the user must decide or approve becomes a card in the task file, with context and a
+  suggested answer, never left only in chat. Their answer is written back to every card it settles.
+- Every wait has a follow-up date. `## Activity` is append-only. Close things only on evidence,
+  and say out loud anything you tidied away.
+- "What needs me?" is answered from the task files (`task-files` skill), never claiming more
+  than they show.
+- In chat, plain words ("needs you", "waiting on the printer"): no tags, field names or paths.
 
 ## Write things down
 
-If the next session would be worse without it (a decision, a promise, a new task, a fact about a
-person, a changed priority), write it to the right file now: a task's Log, `people.md`,
-`strategy.md` or `me.md`. Then tell the user in one line what you saved and where.
+If the next session would be worse without it (a decision, an answer, a promise, a new task, a
+fact about a person, a changed priority), write it to the right file now: the task file,
+`people.md`, `strategy.md` or `me.md`. Re-read it to confirm, then tell the user in one line what
+you saved.
 
 ## When something breaks
 

@@ -10,7 +10,10 @@ lives on your Mac, in your home folder, as `brain`.
 - `strategy.md`: your goals, what you're focused on and what to ignore.
 - `people.md`: the people you work with.
 - `voice.md`: how you write, so drafts sound like you.
-- `tasks/`: one file for each piece of work, with the next step and a dated log.
+- `tasks/`: one file for each piece of work. It says what done looks like, the facts settled so
+  far, who has the next move (you, your assistant or someone else) and a dated history. Anything
+  you need to decide is written there with the background and a suggested answer, so it isn't lost
+  in an old chat.
 
 Tell your assistant when something changes ("the launch has moved to May", "I have a new
 manager") and it updates the right file. You can also open the files and edit them yourself.
@@ -20,6 +23,9 @@ manager") and it updates the right file. You can also open the files and edit th
 - Open T3 Code, choose your brain project and start a new thread with Claude.
 - Ask in plain words: "What should I focus on today?", "Draft a reply to this" (paste the
   message in), "Where are we with the website?", "Add a task: renew the insurance by Friday".
+- Ask "What needs me today?" for a short numbered list: deadlines, then the decisions waiting on
+  you, each with a suggested answer, then anything you're waiting on. Reply by number, for example
+  "1 yes, 2 not yet", and your assistant writes your answers down.
 - To share a file, drop it in the `inbox` folder and say so.
 - If you like, type `$` to pick a skill by name. You don't have to.
 
@@ -40,7 +46,8 @@ settings at claude.ai. You can turn it off there.
 ## Your files and the kit's files
 
 - **Yours:** `me.md`, `strategy.md`, `people.md`, `voice.md`, `tasks/`, `inbox/`, `briefs/` and your
-  settings. Updates never touch them. Edit them any time, or ask your assistant to.
+  settings. Updates leave them alone, apart from the one-off change to task files described
+  below. Edit them any time, or ask your assistant to.
 - **The kit's:** `AGENTS.md`, `CLAUDE.md`, `docs/`, `tasks/TEMPLATE.md` and the built-in skills.
   Updates replace them. If you change one anyway, the update keeps your version and puts the new
   one next to it, ending in `.new`.
@@ -62,6 +69,8 @@ settings at claude.ai. You can turn it off there.
   it installs it.
 - It saves a snapshot first and undoes the update by itself if anything goes wrong.
 - Changed your mind later? Say "undo the update".
+- On the update to version 0.3.0, your task files change to the new layout once. A copy of each
+  old file is kept.
 
 ## Extras you can add
 

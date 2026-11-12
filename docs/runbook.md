@@ -32,12 +32,13 @@ Check these a few days ahead. Each "no" is a blocker to solve first.
 | 10 min | Interview: fills `me.md`, `strategy.md` and their timezone, days and hours. | They have approved both files. |
 | 5 min | People: they name the people they work with. | They have approved `people.md`. |
 | 5 min | Voice: they paste two or three things they've written, or skip. | They have approved `voice.md`, or skipped it. |
-| 5 min | First tasks: what's on their plate. | Task files they chose. |
+| 5 min | First tasks: what's on their plate. Decisions become cards with a suggested answer; waits get a follow-up date. Then they ask "what needs me today?". | Task files they chose, and they've seen "what needs me?" list what's theirs. |
 | 2 min | Wrap up: how to ask, `brain doctor`, `brain report`, updates, extras. | `brain doctor` shows no problems and they know how to reach you. |
 
 Leave the user with:
 - their brain remembers them; they tell it when something changes;
 - they always press Send;
+- "what needs me?" lists what's waiting on them, and they can reply by number;
 - at the start of a Claude chat it offers updates; they say yes;
 - "something's wrong" in a chat starts the troubleshoot skill; `brain report` makes a file for you;
 - Google, Slack and a morning brief are there if they ask.
@@ -108,6 +109,9 @@ Work down this list. Go to the next step only when the one before hasn't solved 
 - **On the user's Mac:** a failed update restores its snapshot by itself. To undo a finished one:
   `brain rollback` (latest snapshot), `brain rollback --list`, `brain rollback --snapshot NAME`.
   The last three snapshots are kept.
+- **Rolling back from 0.3.0:** a rollback restores the kit, not the user's files, so task files
+  stay in the new layout, which 0.2.0 can't read. The originals are in
+  `.kit/state/migrations/0002/`: copy them back over `tasks/` if the Mac must stay on 0.2.0.
 - **On your side:** never delete or overwrite a published release. Ship a new patch release that
   reverts the change, so every Mac moves forward to a good version.
 

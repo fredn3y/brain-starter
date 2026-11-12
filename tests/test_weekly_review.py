@@ -113,7 +113,7 @@ def test_engine_failure_gives_a_short_plain_review(week):
     assert lines[0].startswith("> Generated Mon 26 Oct 07:30")
     assert lines[2].startswith("AI summary unavailable this week: Claude gave no readable answer")
     assert "- briefs/2026-10-23.md" in lines and "- New website live (tasks/archive/website.md)" in lines
-    assert "- Hire a bookkeeper (due 2026-11-15) — next: [me] Shortlist two" in lines
+    assert "- Hire a bookkeeper (due 2026-11-15) — next: [human] Shortlist two" in lines
     assert "- slack_sync failed 2 time(s): ratelimited again" in lines
     log_text = (week.ws.logs / "brain.log").read_text()
     assert "Hire a bookkeeper" not in log_text and "New website" not in log_text
@@ -132,3 +132,25 @@ def test_engine_uses_the_default_tools(week):
     weekly_review.run(week.ctx())
     argv = [a for a in week.runner.argvs() if a[0] == str(week.claude)][0]
     assert argv[argv.index("--allowedTools") + 1:] == engine.DEFAULT_TOOLS
+
+
+def test_review_reads_new_format_tasks(week, at):
+    (week.ws.tasks / "active" / "hire.md").write_text(
+        '---\ntitle: "Hire a bookkeeper"\npriority: "P2"\ncreated_at: "2026-10-01"\nupdated_at: "2026-10-20"\n'
+        'due_at: "2026-11-15"\ncompleted_at: ""\nlinks: []\n---\n\n## Outcome\n\nA bookkeeper starts.\n\n'
+        "## Pinned\n\n## Threads / Open Loops\n\n- [human] Approve the job advert?\n  Context: Two lines long.\n\n"
+        "## Activity\n\n### 2026-10-20 10:00 UTC\n- Advert drafted.\n")
+    done = week.ws.tasks / "archive" / "website.md"
+    done.write_text('---\ntitle: "New website live"\ncompleted_at: "2026-10-22"\n---\n\n## Outcome\n\nLive.\n')
+    inside = at(2026, 10, 22, 15).timestamp()
+    os.utime(str(done), (inside, inside))
+    week.mode = "fail"
+    weekly_review.run(week.ctx())
+    packet = json.loads((week.ws.packets / "weekly-2026-W43.json").read_text())
+    [task] = packet["tasks"]
+    assert task["threads"] == [{"tag": "human", "kind": "approval", "text": "Approve the job advert?",
+                                "context": "Two lines long."}]
+    assert task["last_log"] == "2026-10-20" and task["due"] == "2026-11-15"
+    assert packet["archived_this_week"] == [{"path": "tasks/archive/website.md", "title": "New website live"}]
+    lines = (week.ws.briefs / "weekly-2026-W43.md").read_text().splitlines()
+    assert "- Hire a bookkeeper (due 2026-11-15) — next: [human] Approve the job advert?" in lines

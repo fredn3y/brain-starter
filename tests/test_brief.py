@@ -181,11 +181,16 @@ def test_packet_gathers_every_source(scene):
                                                     "Yes, after lunch", "Shipping update"]
     assert packet["slack"][2]["from_me"] and packet["slack"][0]["mentions_me"]
     launch, notes = packet["tasks"]
+    # Old-format files still read, with the old tags given their new names.
     assert launch == {"path": "tasks/active/launch.md", "title": "Launch the spring range", "priority": "P1",
-                      "due": "2026-11-01", "last_log": "2026-10-20",
-                      "next_steps": ["[ai] Draft the supplier email", "[me] Approve the price list",
-                                     "[waiting] Samples from the factory"]}
-    assert notes["title"] == "Office move" and notes["priority"] is None and notes["next_steps"] == ["[me] Book the van"]
+                      "due": "2026-11-01", "last_log": "2026-10-20", "outcome": "",
+                      "next_steps": ["[ai] Draft the supplier email", "[human] Approve the price list",
+                                     "[external] Samples from the factory"],
+                      "threads": [{"tag": "ai", "kind": "thread", "text": "Draft the supplier email"},
+                                  {"tag": "human", "kind": "approval", "text": "Approve the price list"},
+                                  {"tag": "external", "kind": "thread", "text": "Samples from the factory"}]}
+    assert notes["title"] == "Office move" and notes["priority"] is None
+    assert notes["next_steps"] == ["[human] Book the van"]
     assert packet["health"]["problems"][0]["name"] == "disk"
     assert packet["update"]["update_available"] is True
     assert [(e["job"], e["count"], e["detail"]) for e in packet["job_errors"]] == [
@@ -521,3 +526,76 @@ def test_brief_exits_quietly_while_another_run_holds_the_lock(ws, monkeypatch, c
         assert held
         assert args.func(args) == 0
     assert "busy" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- tasks in the shared format
+
+NEW_TASK = """---
+title: "Open the second shop"
+priority: "P1"
+created_at: "2026-10-01"
+updated_at: "2026-10-20"
+due_at: "2026-12-01"
+completed_at: ""
+links: []
+---
+
+## Outcome
+
+<!-- One or two sentences. -->
+The second shop is open and trading.
+
+## Pinned
+
+- The landlord wants three months' rent up front. (2026-10-05)
+
+## Threads / Open Loops
+
+<!--
+  - [ai] an example inside a note, never a thread
+-->
+- [ai] Draft the opening-day email
+- [human] Q: Do we open on a Saturday or a Monday?
+  Context: Saturdays are busier but the fitters finish on Friday night.
+  Options: Saturday :: more customers | Monday :: a calm first day
+  Recommend: Saturday
+- [external] Signed lease from the landlord
+  Follow-Up: 2026-10-28
+- Deferred (on the lease being signed; review by 2026-11-15): order the shop sign
+
+## Activity
+
+### 2026-10-20 14:05 UTC
+- Fitters booked.
+
+### 2026-10-12 09:00 UTC
+- Viewed the unit.
+"""
+
+
+def test_new_format_task_in_the_packet(ws):
+    (ws.tasks / "active").mkdir(parents=True)
+    (ws.tasks / "active" / "shop.md").write_text(NEW_TASK)
+    (ws.tasks / "active" / "TEMPLATE.md").write_text(NEW_TASK)
+    [task] = brief.collect_tasks(ws)
+    assert task["path"] == "tasks/active/shop.md" and task["title"] == "Open the second shop"
+    assert (task["priority"], task["due"], task["last_log"]) == ("P1", "2026-12-01", "2026-10-20")
+    assert task["outcome"] == "The second shop is open and trading."
+    assert task["next_steps"] == [
+        "[ai] Draft the opening-day email", "[human] Q: Do we open on a Saturday or a Monday?",
+        "[external] Signed lease from the landlord",
+        "Deferred (on the lease being signed; review by 2026-11-15): order the shop sign"]
+    assert task["threads"][1] == {
+        "tag": "human", "kind": "question", "text": "Q: Do we open on a Saturday or a Monday?",
+        "context": "Saturdays are busier but the fitters finish on Friday night.",
+        "options": "Saturday :: more customers | Monday :: a calm first day", "recommend": "Saturday"}
+    assert task["threads"][2]["follow_up"] == "2026-10-28"
+    assert task["threads"][3]["kind"] == "deferred"
+
+
+def test_fallback_brief_lists_a_new_format_task(ws):
+    (ws.tasks / "active").mkdir(parents=True)
+    (ws.tasks / "active" / "shop.md").write_text(NEW_TASK)
+    packet = {"tasks": brief.collect_tasks(ws)}
+    text = brief.render_fallback(packet, "no engine", "Europe/London")
+    assert "- Open the second shop (P1, due 2026-12-01) — next: [ai] Draft the opening-day email" in text

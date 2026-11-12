@@ -53,6 +53,18 @@ matches a freelancer's Mac. Note the Mac model, chip and macOS version: ______
    runbook says (check on the dry run).
 10. Command Line Tools: note how long `xcode-select --install` took and whether it asked for the
     Mac password: ______
+11. First task, new format: in the setup's tasks part, name one thing you must decide and one you're
+    waiting for and want to chase today. Open the new file in `tasks/active/`: front matter with `title`, `priority`
+    `"P2"`, `created_at`, `updated_at`, `due_at`, `completed_at` and `links`; the sections
+    `## Outcome`, `## Pinned`, `## Threads / Open Loops` and `## Activity`; a `[human]` card with
+    `Context:` and `Recommend:` lines; an `[external]` thread with a `Follow-Up:` date; a
+    `Created.` Activity entry. The chat showed none of the tags or field names.
+12. "What needs me today?" in a new thread: a short numbered list from the task files, with the
+    card and its suggested answer, the wait asked as a question ("still waiting on ...?"), and one
+    closing line on what it can't see. It never says you are "free" or "clear".
+13. Reply "1 yes" (or the card's number): the card is closed or rewritten into the next step, a
+    dated Activity entry
+    records the answer, `updated_at` is today, and the next "what needs me?" no longer lists it.
 
 ## Setup for the numbered gates
 

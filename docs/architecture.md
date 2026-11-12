@@ -41,7 +41,7 @@ templates/                  files created in ~/brain ONLY IF MISSING (user-owned
   me.md strategy.md people.md voice.md
   tasks/active/.keep tasks/later/.keep tasks/archive/.keep
   .kit/config.json          the user's settings (timezone, brief time, …)
-migrations/NNNN_name.py     def migrate(workspace: Path) -> str
+migrations/NNNN_name.py     def migrate(workspace: Path) -> str (0002_task_format: see Task files)
 tools/build_release.py      builds dist/brain-starter-vX.Y.Z.tar.gz + SHA256SUMS
 tests/                      pytest; macOS commands faked through Runner
 docs/                       for the consultant: architecture, runbook, security, dry run, sources
@@ -59,6 +59,7 @@ docs/                       for the consultant: architecture, runbook, security,
 | `.kit/config.json` | user | created from template; never overwritten |
 | `.kit/manifest.json` | kit | manifest of the installed release (hashes of kit-owned files) |
 | `.kit/state/session-start.json` | generated | the session-start hook's last check try and last "update available" line |
+| `.kit/state/migrations.json`, `.kit/state/migrations/<NNNN>/` | generated | migrations done; copies of files a migration changed (0002: `tasks/…` originals) |
 | `.kit/snapshots/` | generated | pre-update tarballs, keep last 3 |
 | `.kit/run.lock` | generated | catch-up / update lock |
 | `me.md`, `strategy.md`, `people.md`, `voice.md` | user | filled by `/onboard` |
@@ -113,6 +114,7 @@ Module ownership:
 | `slack_sync.py` | cursor-based sync to `ledgers/slack/` (72 h re-read for new thread replies) |
 | `slack_cli.py` | `brain slack whoami|sync|recent|search|thread|channels|create-app` |
 | `engine.py` | headless engine run (`claude -p …`) with an allowed-tools list |
+| `taskfile.py` | the one task-file reader (frontmatter, threads, Outcome, Pinned, Activity), both formats (see Task files) |
 | `brief.py` | data packet → engine writes brief → header stamp → Gmail draft (catchup notifies) |
 | `brief_fallback.py` | plain brief rendered from the packet when the engine fails |
 | `jobs/*.py` | `health`, `slack_sync`, `update_check`, `brief`, `weekly_review` job wrappers |
@@ -129,6 +131,80 @@ Module ownership:
 | `guard.py` | Claude Code PreToolUse hook (`.kit/bin/brain-guard`): blocks sends, secret reads, kit-file edits |
 | `destructive.py` | the hook's rules for destructive commands: recursive `rm`, `sudo`, `pkill`, `killall`, `git clean`, `git reset --hard`, force-pushes |
 | `trash.py` | `brain trash <path>...`: move items to `~/.Trash`, never delete (see Trash) |
+
+## Task files
+
+One file per outcome in `tasks/active|later|archive/`, in the owner's shared task format so his
+checker, brief and tidy-ups can later run on kit files unchanged. `kit/tasks/TEMPLATE.md` is the
+reference copy.
+
+```text
+---
+title: "…"   priority: "P2"   created_at / updated_at: "YYYY-MM-DD"   due_at: ""
+completed_at: ""   links: []           (optional: project, blocker, comms: {…})
+---
+## Outcome                what done looks like
+## Pinned                 settled facts, each with a (YYYY-MM-DD)
+## Threads / Open Loops   top-level bullets, see below
+## Activity               newest first: ### YYYY-MM-DD HH:MM UTC, then "- …" lines; append only
+```
+
+Threads: `- [ai] …` (ready; scheduled work is `- [ai] From YYYY-MM-DD: …`), `- [human] …` (a
+decision `Q: …?`, an approval `Approve …?`, or a manual action), `- [external] …` with a
+`Follow-Up: YYYY-MM-DD` line, and `- Deferred (on <trigger>; review by YYYY-MM-DD): …`. Indented
+field lines: `Context:`, `Options: A :: consequence | B :: consequence`, `Recommend:`, `Source:`,
+`Draft:`, `To:`, `Channel:`, `Snooze-Until:`, `Follow-Up:`.
+
+`taskfile.py` is the only parser. `parse_frontmatter(text, defaults=True) -> (meta, body)` and
+`extract_threads(text) -> [thread]` return the same shapes as the owner's
+`taskstore.parse_frontmatter` / `taskstore.extract_threads` (thread keys `index, tag, text, title,
+kind, why, brief, recommend, preview, snooze_until, park_until, defer_hash, start, end`, plus
+`to, channel, context, options, source, draft, follow_up, …` when set). Also `task_meta`,
+`outcome`, `pinned`, `activity_entries`, `last_activity_date`, `read_task`. Differences from the
+owner's reader, to keep in mind when the shared one is swapped in:
+
+- It still reads the kit's old format (0.2.x: `created`/`updated`/`due`, `## Next` tagged
+  `[ai]`/`[me]`/`[waiting]`, `## Log` of dated lines, or tagged lines anywhere outside the Log),
+  because `brain rollback` and an interrupted update can leave old files beside new code. Old
+  tags come back as `human`/`external`; `task_meta` copies old keys to the new names.
+- Forgiving of hand edits: byte-order mark, `\r\n`, `*` bullets, upper-case tags, single or double
+  quotes; keys lower-cased; lines inside `<!-- -->` are never threads (`start`/`end` count lines
+  after the mark and `\r` are dropped).
+- No retired `parked` tag and no owner-only `approved` kind.
+
+The brief and weekly-review packets carry, per task: `path, title, priority, due` (from `due_at`),
+`outcome, next_steps` (`"[tag] text"`), `threads` (`tag, kind, text` and any set card fields),
+`last_log` (newest Activity date). The names `due`, `next_steps` and `last_log` are kept from 0.2
+so the skills keep working; the tags in them are the new ones.
+
+Migration `0002_task_format` (0.2.x → 0.3.0) converts every `*.md` under the three folders
+(sub-folders too; not hidden files, links or `TEMPLATE.md`): renames `created`/`updated`/`due`
+to `*_at` in place (values verbatim; an existing new key wins and the old line stays), adds
+`completed_at` (in `archive/`, the `updated` date when it is one) and `links: []`, renames
+`## Next`/`## Next steps` → `## Threads / Open Loops` and `## Log`/`## History`/`## Updates` →
+`## Activity`, retags `[me]` → `[human]` and `[waiting]` → `[external]` in the Threads section
+only, and adds empty `## Pinned` after the Outcome (and any missing Outcome, Threads or Activity).
+Old Log lines stay word for word and in order: when the Activity section has no `###` heading
+yet, a `### YYYY-MM-DD` heading (date only: the old lines carry no time) goes above each run of
+lines starting with the same date, so each becomes an Activity entry the owner's checker reads by
+its date; lines before the first dated one stay at the top. Each changed file is first copied
+(times kept) to `.kit/state/migrations/0002/<its path>` (an existing different copy is never
+overwritten: `name-2.md`), is written atomically and keeps its mode and modified time (the weekly
+review reads mtime). A file with no or unclosed frontmatter, a non `key: value` frontmatter line,
+non-UTF-8 bytes, or no task sections or tags at all is left untouched and named in the result
+line. A second run finds nothing to do.
+
+For the later step: what the owner's checker (`validate.py`) requires that kit files don't have.
+Errors: `project` (non-blank) and `comms` keys; no top-level keys beyond its list (so a user's own
+key, or an old `created` kept beside `created_at`, is an error); exactly Outcome → [Pinned] →
+Threads / Open Loops → Activity as `##` sections (a hand-added `## Notes` is an error);
+`completed_at` set on every archived file; `due_at` a valid date; frontmatter starting with exactly
+`---\n` (no byte-order mark or `\r\n`) and values in double quotes only (it doesn't strip single
+quotes, so `due_at: '2026-11-01'` fails); `links` that aren't web addresses must exist. Warnings: a `Follow-Up:` on
+every active `[external]` (migrated `[waiting]` lines have none), `Context:` on every `Q:`/`Approve`
+card, at most 3 ready `[ai]` lines, a date on every pin, P1 needs `due_at` or `blocker`, its
+`project` list is the owner's own. It reads only the first date of an Activity heading, so the
+migration's date-only `### YYYY-MM-DD` passes, though the spec writes `### YYYY-MM-DD HH:MM UTC`.
 
 ## Trash (`brain trash`)
 

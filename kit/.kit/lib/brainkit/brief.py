@@ -10,9 +10,12 @@ Packet keys (the skills read these):
   window {since, now, tz}; calendar_today, calendar_tomorrow [{calendar, start, end, location,
   summary}]; mail {query, count, messages [{id, thread_id, from, to, subject, date, excerpt,
   link}]}; slack [{time, channel, kind, from, from_me, mentions_me, in_thread, text, files, link}]
-  (DMs and mentions first); slack_status; tasks [{path, title, priority, due, next_steps,
-  last_log}]; health {problems, checked_at}; update; job_errors [{job, detail, count, last}];
-  files {me, strategy, people, voice, previous_brief}; errors [{source, error}].
+  (DMs and mentions first); slack_status; tasks [{path, title, priority, due (the due_at date),
+  outcome, next_steps ("[tag] text" per open thread, a Deferred loop as written), threads [{tag
+  ai|human|external|deferred, kind question|approval|deferred|thread, text, and context,
+  options, recommend, follow_up, snooze_until, to, channel, draft, source when set}], last_log
+  (newest Activity date)}] read by taskfile.py from either task format; health {problems,
+  checked_at}; update; job_errors [{job, detail, count, last}]; files {me, strategy, people, voice, previous_brief}; errors [{source, error}].
 
 Mail and Slack content goes only into the packet and the brief, never into logs.
 """
@@ -29,7 +32,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from . import clock, gws
+from . import clock, gws, taskfile
 from .brief_fallback import render_fallback
 from .jobs.base import JobContext, JobResult
 from .paths import Workspace
@@ -41,11 +44,8 @@ MAIL_READ = 10
 EXCERPT_CHARS = 1500
 SLACK_CAP = 80
 PERSON_FILES = ("me", "strategy", "people", "voice")
-NEXT_STEP_TAGS = ("[ai]", "[me]", "[waiting]")
-LOG_HEADINGS = ("log", "activity", "history", "updates")
 STAMP_PREFIX = "> Generated "
 BRIEF_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:-(\d+))?\.md$")
-DATE_AT_START = re.compile(r"^\s*(?:[-*]\s+)?(?:#+\s*)?\**\s*(\d{4}-\d{2}-\d{2})")
 GMAIL_LINK = "https://mail.google.com/mail/u/0/#inbox/"
 WINDOW_SOURCES = ("mail", "calendar_today", "calendar_tomorrow", "slack")
 
@@ -141,48 +141,26 @@ def job_errors(ctx: JobContext, since: datetime) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------- tasks
 
 
-def split_frontmatter(text: str) -> Tuple[Dict[str, str], List[str]]:
-    """Simple `key: value` frontmatter between leading `---` lines, plus the body lines."""
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return {}, lines
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            meta: Dict[str, str] = {}
-            for line in lines[1:index]:
-                key, sep, value = line.partition(":")
-                if sep and key.strip() and not line[:1].isspace() and not key.startswith("-"):
-                    meta[key.strip().lower()] = value.strip().strip("'\"")
-            return meta, lines[index + 1:]
-    return {}, lines
+THREAD_FIELDS = ("context", "options", "recommend", "follow_up", "snooze_until", "to", "channel",
+                 "draft", "source")
 
 
-def last_log_date(lines: List[str]) -> Optional[str]:
-    """Newest line-leading date under a Log/Activity heading (else anywhere in the file)."""
-    in_log, logged, anywhere = False, [], []
-    for line in lines:
-        match = DATE_AT_START.match(line)
-        if line.startswith("#") and not match:
-            in_log = line.lstrip("#").strip().lower().startswith(LOG_HEADINGS)
-        if match:
-            anywhere.append(match.group(1))
-            if in_log:
-                logged.append(match.group(1))
-    found = logged or anywhere
-    return max(found) if found else None
+def _thread_view(thread: Dict[str, Any]) -> Dict[str, Any]:
+    view = {"tag": thread["tag"], "kind": thread["kind"], "text": thread["text"][:300]}
+    view.update({key: str(thread[key])[:300] for key in THREAD_FIELDS if thread.get(key)})
+    return view
 
 
 def parse_task(path: Path, root: Path) -> Dict[str, Any]:
-    meta, body = split_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
-    heading = next((line[2:].strip() for line in body if line.startswith("# ")), "")
-    steps = []
-    for line in body:
-        text = line.strip()
-        if text[:2] in ("- ", "* ") and text[2:].lower().startswith(NEXT_STEP_TAGS):
-            steps.append(text[2:][:300])
-    return {"path": os.path.relpath(str(path), str(root)), "title": meta.get("title") or heading or path.stem,
-            "priority": meta.get("priority"), "due": meta.get("due"), "next_steps": steps[:10],
-            "last_log": last_log_date(body)}
+    """One task file (either format) as a packet entry; see the module notes for the keys."""
+    task = taskfile.read_task(path.read_text(encoding="utf-8", errors="replace"))
+    meta, threads = task["meta"], task["threads"][:10]
+    steps = [(t["text"] if t["tag"] == "deferred" else f"[{t['tag']}] {t['text']}")[:300] for t in threads]
+    return {"path": os.path.relpath(str(path), str(root)),
+            "title": meta.get("title") or task["heading"] or path.stem,
+            "priority": meta.get("priority") or None, "due": meta.get("due_at") or None,
+            "outcome": task["outcome"][:300], "next_steps": steps,
+            "threads": [_thread_view(t) for t in threads], "last_log": task["last_activity"]}
 
 
 def collect_tasks(ws: Workspace, folder: str = "active", limit: int = 60) -> List[Dict[str, Any]]:

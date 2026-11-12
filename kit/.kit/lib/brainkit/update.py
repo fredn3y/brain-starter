@@ -452,7 +452,7 @@ def list_snapshots_text(ws: Workspace) -> List[str]:
 # --- CLI ----------------------------------------------------------------------------------
 
 def register(subparsers) -> None:
-    up = subparsers.add_parser("update", help="get the newest brain kit (your files are never touched)")
+    up = subparsers.add_parser("update", help="get the newest brain kit (your own files are kept)")
     up.add_argument("--check", action="store_true", help="only check for a new version")
     up.add_argument("--yes", action="store_true", help="update without asking")
     up.set_defaults(func=_cmd_update)
