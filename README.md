@@ -9,9 +9,11 @@ Each piece of work is one task file: the outcome, settled facts, who moves each 
 dated history. Anything the user must decide is written there as a card with a suggested answer,
 and "what needs me?" lists them. The format: [docs/task-format.md](docs/task-format.md).
 
-**Status:** v0.2.0 has had one test on a real Mac (macOS 26, Apple silicon), on a machine that
-already had Claude Code and T3 Code. Fresh downloads of those two, the update notice and the
-add-ons are not yet tested on a real Mac.
+**Status:** the installer has had one test on a real Mac (macOS 26, Apple silicon), with v0.2.0,
+on a machine that already had Claude Code and T3 Code. It is unchanged in v0.3.0. The v0.3.0 task
+files are tested on Linux with Python 3.9, the version a Mac has. Not yet tested on a real Mac:
+the v0.3.0 task files, fresh downloads of Claude Code and T3 Code, the update notice and the
+add-ons.
 
 ## Install
 
